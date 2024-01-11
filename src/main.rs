@@ -7,6 +7,32 @@ use crate::ram::Ram;
 pub mod cpu;
 pub mod ram;
 
+struct Machine {
+    cpu: Cpu,
+    memory: Ram,
+}
+
+impl Machine {
+    fn new(memory: Ram) -> Machine {
+        Machine {
+            cpu: Cpu::new(),
+            memory: memory,
+        }
+    }
+
+    fn power_on(&mut self) {
+        self.cpu.pc = 0x400;
+        loop {
+            if self.cpu.pc == 0x3469 {
+                break;
+            }
+
+            self.cpu.read_instruction(&mut self.memory);
+        }
+
+    }
+}
+
 fn main() {
     let mut args = env::args();
     let command = args.next().unwrap();
@@ -15,13 +41,9 @@ fn main() {
         process::exit(1);
     });
 
-    let mut ram = Ram::from_raw_file(&file_name);
+    let ram = Ram::from_raw_file(&file_name);
+    let mut nes = Machine::new(ram);
 
-    let mut cpu = Cpu::new();
-
-    cpu.pc = 0x400;
-    while cpu.pc != 0x3469 {
-        cpu.read_instruction(&mut ram);
-    }
+    nes.power_on();
     println!("TEST PASSED");
 }
