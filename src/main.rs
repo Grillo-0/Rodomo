@@ -1,11 +1,13 @@
+pub mod cpu;
+pub mod ines;
+pub mod ram;
+
 use std::env;
 use std::process;
 
 use crate::cpu::Cpu;
+use crate::ines::INes;
 use crate::ram::Ram;
-
-pub mod cpu;
-pub mod ram;
 
 struct Machine {
     cpu: Cpu,
@@ -21,15 +23,21 @@ impl Machine {
     }
 
     fn power_on(&mut self) {
-        self.cpu.pc = 0x400;
+        self.cpu.pc = 0xc000;
+        let mut pos_02 = self.memory.read(0x02);
+        let mut pos_03 = self.memory.read(0x03);
+
         loop {
-            if self.cpu.pc == 0x3469 {
+            if pos_02 != self.memory.read(0x02) && pos_03 != self.memory.read(0x03) {
                 break;
             }
-
+            println!("0x{:04x}", self.cpu.pc);
             self.cpu.read_instruction(&mut self.memory);
         }
 
+        pos_02 = self.memory.read(0x02);
+        pos_03 = self.memory.read(0x03);
+        println!("0x02:{:#02x} 0x03:{:#02x}", pos_02, pos_03);
     }
 }
 
@@ -41,7 +49,11 @@ fn main() {
         process::exit(1);
     });
 
-    let ram = Ram::from_raw_file(&file_name);
+    let rom = INes::parse(&file_name);
+
+    let mut ram = Ram::new();
+    ram.load_vec_at(rom.program, 0xc000);
+
     let mut nes = Machine::new(ram);
 
     nes.power_on();
