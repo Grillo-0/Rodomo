@@ -3,10 +3,9 @@ use std::fmt;
 
 const NEGATIVE_MASK: u8 = 1 << 7;
 
-#[derive(Debug)]
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Cpu {
-    sp: u8,  // Stack Pointer
+    sp: u8,      // Stack Pointer
     pub pc: u16, // Program Counter
 
     a: u8, // Accumulator
@@ -72,7 +71,9 @@ impl Cpu {
 
     fn get_instruction(&mut self, opcode: u8) -> fn(&mut Cpu) {
         match opcode {
-            0xEA => |cpu: &mut Cpu| { cpu.pc += 1; }, // noop
+            0xEA => |cpu: &mut Cpu| {
+                cpu.pc += 1;
+            }, // noop
 
             0xA9 => instr!(lda - imm),
             0xA5 => instr!(lda - zp),
@@ -219,7 +220,7 @@ impl Cpu {
             0xB8 => instr!(clv - imp),
 
             0xC9 => instr!(cmp - imm),
-            0xC5 => instr!(cmp - zp) ,
+            0xC5 => instr!(cmp - zp),
             0xD5 => instr!(cmp - zpx),
             0xCD => instr!(cmp - abs),
             0xDD => instr!(cmp - abx),
@@ -228,15 +229,15 @@ impl Cpu {
             0xD1 => instr!(cmp - iny),
 
             0xE0 => instr!(cpx - imm),
-            0xE4 => instr!(cpx - zp) ,
+            0xE4 => instr!(cpx - zp),
             0xEC => instr!(cpx - abs),
 
             0xC0 => instr!(cpy - imm),
-            0xC4 => instr!(cpy - zp) ,
+            0xC4 => instr!(cpy - zp),
             0xCC => instr!(cpy - abs),
 
             0x69 => instr!(adc - imm),
-            0x65 => instr!(adc - zp) ,
+            0x65 => instr!(adc - zp),
             0x75 => instr!(adc - zpx),
             0x6D => instr!(adc - abs),
             0x7D => instr!(adc - abx),
@@ -245,7 +246,7 @@ impl Cpu {
             0x71 => instr!(adc - iny),
 
             0xE9 => instr!(sbc - imm),
-            0xE5 => instr!(sbc - zp) ,
+            0xE5 => instr!(sbc - zp),
             0xF5 => instr!(sbc - zpx),
             0xED => instr!(sbc - abs),
             0xFD => instr!(sbc - abx),
@@ -464,14 +465,14 @@ impl Cpu {
     fn status_to_word(&self) -> u8 {
         let mut status = 0;
 
-        status |= (self.carry_flag as u8)     << 0;
-        status |= (self.zero_flag as u8)      << 1;
+        status |= (self.carry_flag as u8) << 0;
+        status |= (self.zero_flag as u8) << 1;
         status |= (self.interrupt_flag as u8) << 2;
-        status |= (self.decimal_flag as u8)   << 3;
+        status |= (self.decimal_flag as u8) << 3;
         status |= (self.break_cmd_flag as u8) << 4;
-        status |= (self.reserved_flag as u8)  << 5;
-        status |= (self.overflow_flag as u8)  << 6;
-        status |= (self.negative_flag as u8)  << 7;
+        status |= (self.reserved_flag as u8) << 5;
+        status |= (self.overflow_flag as u8) << 6;
+        status |= (self.negative_flag as u8) << 7;
 
         return status;
     }
@@ -496,14 +497,14 @@ impl Cpu {
     }
 
     fn word_to_status(&mut self, word: u8) {
-        self.carry_flag     = ((word >> 0) & 1) != 0;
-        self.zero_flag      = ((word >> 1) & 1) != 0;
+        self.carry_flag = ((word >> 0) & 1) != 0;
+        self.zero_flag = ((word >> 1) & 1) != 0;
         self.interrupt_flag = ((word >> 2) & 1) != 0;
-        self.decimal_flag   = ((word >> 3) & 1) != 0;
+        self.decimal_flag = ((word >> 3) & 1) != 0;
         self.break_cmd_flag = ((word >> 4) & 1) != 0;
-        self.reserved_flag  = ((word >> 5) & 1) != 0;
-        self.overflow_flag  = ((word >> 6) & 1) != 0;
-        self.negative_flag  = ((word >> 7) & 1) != 0;
+        self.reserved_flag = ((word >> 5) & 1) != 0;
+        self.overflow_flag = ((word >> 6) & 1) != 0;
+        self.negative_flag = ((word >> 7) & 1) != 0;
     }
 
     fn plp(&mut self) {
@@ -678,7 +679,7 @@ impl Cpu {
         self.a = self.shift_left(self.a);
     }
 
-    fn asl_addr(&mut self, addr: u16){
+    fn asl_addr(&mut self, addr: u16) {
         let mut value = self.ram.read(addr);
         value = self.shift_left(value);
         self.ram.write(addr, value);
@@ -698,7 +699,7 @@ impl Cpu {
         self.a = self.shift_right(self.a);
     }
 
-    fn lsr_addr(&mut self, addr: u16){
+    fn lsr_addr(&mut self, addr: u16) {
         let mut value = self.ram.read(addr);
         value = self.shift_right(value);
         self.ram.write(addr, value);
@@ -706,7 +707,7 @@ impl Cpu {
 
     fn rotate_left(&mut self, mut value: u8) -> u8 {
         let old = value;
-        value <<=1;
+        value <<= 1;
         value |= self.carry_flag as u8;
 
         self.carry_flag = old & NEGATIVE_MASK != 0;
@@ -721,7 +722,7 @@ impl Cpu {
         self.a = self.rotate_left(self.a);
     }
 
-    fn rol_addr(&mut self, addr: u16){
+    fn rol_addr(&mut self, addr: u16) {
         let mut value = self.ram.read(addr);
         value = self.rotate_left(value);
         self.ram.write(addr, value);
@@ -729,7 +730,7 @@ impl Cpu {
 
     fn rotate_right(&mut self, mut value: u8) -> u8 {
         let old = value;
-        value >>=1;
+        value >>= 1;
         value |= (self.carry_flag as u8) << 7;
 
         self.carry_flag = old & 1 != 0;
@@ -744,7 +745,7 @@ impl Cpu {
         self.a = self.rotate_right(self.a);
     }
 
-    fn ror_addr(&mut self, addr: u16){
+    fn ror_addr(&mut self, addr: u16) {
         let mut value = self.ram.read(addr);
         value = self.rotate_right(value);
         self.ram.write(addr, value);
@@ -881,7 +882,7 @@ impl Cpu {
 
         self.zero_flag = value == 0;
         self.negative_flag = value & NEGATIVE_MASK != 0;
-        
+
         self.pc = self.pc.wrapping_add(1);
     }
 
@@ -892,7 +893,7 @@ impl Cpu {
 
         self.zero_flag = value == 0;
         self.negative_flag = value & NEGATIVE_MASK != 0;
-        
+
         self.pc = self.pc.wrapping_add(1);
     }
 }

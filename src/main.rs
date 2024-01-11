@@ -4,7 +4,6 @@ use std::process;
 use crate::cpu::Cpu;
 use crate::ram::Ram;
 
-
 pub mod cpu;
 pub mod ram;
 

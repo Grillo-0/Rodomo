@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 
-#[derive(Debug)]
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Ram {
     memory: HashMap<u16, u8>,
 }
@@ -10,7 +9,7 @@ pub struct Ram {
 impl Ram {
     pub fn create() -> Ram {
         Ram {
-            memory: HashMap::new()
+            memory: HashMap::new(),
         }
     }
     pub fn from_raw_file(path: &str) -> Ram {
@@ -28,7 +27,7 @@ impl Ram {
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
-        let x =self.memory[&addr];
-        return  x;
+        let x = self.memory[&addr];
+        return x;
     }
 }
