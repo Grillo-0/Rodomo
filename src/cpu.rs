@@ -1,5 +1,6 @@
-use crate::ram::Ram;
 use std::fmt;
+
+use crate::ram::Ram;
 
 const NEGATIVE_MASK: u8 = 1 << 7;
 
@@ -20,20 +21,18 @@ pub struct Cpu {
     reserved_flag: bool,
     overflow_flag: bool,
     negative_flag: bool,
-
-    ram: Ram,
 }
 
 macro_rules! instr {
     ($instruction:ident-imp) => {
-        |cpu: &mut Cpu| {
-            cpu.$instruction();
+        |cpu: &mut Cpu, ram: &mut Ram| {
+            cpu.$instruction(ram);
         }
     };
     ($instruction:ident-$addr_mode:ident) => {
-        |cpu: &mut Cpu| {
-            let addr = cpu.$addr_mode();
-            cpu.$instruction(addr);
+        |cpu: &mut Cpu, ram: &mut Ram| {
+            let addr = cpu.$addr_mode(ram);
+            cpu.$instruction(addr, ram);
         }
     };
 }
@@ -56,22 +55,21 @@ impl fmt::Display for Cpu {
 }
 
 impl Cpu {
-    pub fn create(ram: Ram) -> Cpu {
+    pub fn new() -> Cpu {
         Cpu {
             sp: 0xff,
-            ram,
             ..Default::default()
         }
     }
 
-    pub fn read_instruction(&mut self) {
-        let opcode = self.ram.read(self.pc.into());
-        self.get_instruction(opcode)(self);
+    pub fn read_instruction(&mut self, ram: &mut Ram) {
+        let opcode = ram.read(self.pc.into());
+        self.get_instruction(opcode)(self, ram);
     }
 
-    fn get_instruction(&mut self, opcode: u8) -> fn(&mut Cpu) {
+    fn get_instruction(&mut self, opcode: u8) -> fn(&mut Cpu, &mut Ram) {
         match opcode {
-            0xEA => |cpu: &mut Cpu| {
+            0xEA => |cpu: &mut Cpu, _: &mut Ram| {
                 cpu.pc += 1;
             }, // noop
 
@@ -272,95 +270,95 @@ impl Cpu {
         }
     }
 
-    fn imm(&mut self) -> u16 {
+    fn imm(&mut self, _: &mut Ram) -> u16 {
         self.pc += 1;
         self.pc
     }
 
-    fn zp(&mut self) -> u16 {
+    fn zp(&mut self, ram: &mut Ram) -> u16 {
         self.pc += 1;
-        self.ram.read(self.pc) as u16
+        ram.read(self.pc) as u16
     }
 
-    fn zpx(&mut self) -> u16 {
+    fn zpx(&mut self, ram: &mut Ram) -> u16 {
         self.pc += 1;
-        (self.ram.read(self.pc) as u16).wrapping_add(self.x as u16) & 0xff
+        (ram.read(self.pc) as u16).wrapping_add(self.x as u16) & 0xff
     }
 
-    fn zpy(&mut self) -> u16 {
+    fn zpy(&mut self, ram: &mut Ram) -> u16 {
         self.pc += 1;
-        (self.ram.read(self.pc) as u16).wrapping_add(self.y as u16) & 0xff
+        (ram.read(self.pc) as u16).wrapping_add(self.y as u16) & 0xff
     }
 
-    fn abs(&mut self) -> u16 {
+    fn abs(&mut self, ram: &mut Ram) -> u16 {
         self.pc += 1;
-        let addr = self.ram.read(self.pc);
+        let addr = ram.read(self.pc);
         self.pc += 1;
-        (self.ram.read(self.pc) as u16) << 8 | addr as u16
+        (ram.read(self.pc) as u16) << 8 | addr as u16
     }
 
-    fn abx(&mut self) -> u16 {
+    fn abx(&mut self, ram: &mut Ram) -> u16 {
         self.pc += 1;
-        let mut addr = self.ram.read(self.pc) as u16;
+        let mut addr = ram.read(self.pc) as u16;
         self.pc += 1;
-        addr |= (self.ram.read(self.pc) as u16) << 8;
+        addr |= (ram.read(self.pc) as u16) << 8;
         addr.wrapping_add(self.x as u16)
     }
 
-    fn aby(&mut self) -> u16 {
+    fn aby(&mut self, ram: &mut Ram) -> u16 {
         self.pc += 1;
-        let mut addr = self.ram.read(self.pc) as u16;
+        let mut addr = ram.read(self.pc) as u16;
         self.pc += 1;
-        addr |= (self.ram.read(self.pc) as u16) << 8;
+        addr |= (ram.read(self.pc) as u16) << 8;
         addr.wrapping_add(self.y as u16)
     }
 
-    fn inx(&mut self) -> u16 {
+    fn inx(&mut self, ram: &mut Ram) -> u16 {
         self.pc += 1;
-        let mut addr: u16 = self.ram.read(self.pc) as u16;
+        let mut addr: u16 = ram.read(self.pc) as u16;
         addr = (addr.wrapping_add(self.x as u16) & 0xff) as u16;
-        (self.ram.read(addr + 1) as u16) << 8 | self.ram.read(addr.into()) as u16
+        (ram.read(addr + 1) as u16) << 8 | ram.read(addr.into()) as u16
     }
 
-    fn iny(&mut self) -> u16 {
+    fn iny(&mut self, ram: &mut Ram) -> u16 {
         self.pc += 1;
-        let addr: u16 = self.ram.read(self.pc) as u16;
-        let addr = (self.ram.read(addr.wrapping_add(1)) as u16) << 8 | self.ram.read(addr) as u16;
+        let addr: u16 = ram.read(self.pc) as u16;
+        let addr = (ram.read(addr.wrapping_add(1)) as u16) << 8 | ram.read(addr) as u16;
         addr.wrapping_add(self.y as u16)
     }
 
-    fn ind(&mut self) -> u16 {
+    fn ind(&mut self, ram: &mut Ram) -> u16 {
         self.pc += 1;
-        let addr = self.ram.read(self.pc);
+        let addr = ram.read(self.pc);
         self.pc += 1;
-        let addr = (self.ram.read(self.pc) as u16) << 8 | addr as u16;
-        (self.ram.read(addr + 1) as u16) << 8 | self.ram.read(addr.into()) as u16
+        let addr = (ram.read(self.pc) as u16) << 8 | addr as u16;
+        (ram.read(addr + 1) as u16) << 8 | ram.read(addr.into()) as u16
     }
 
-    fn push(&mut self, value: u8) {
-        self.ram.write(0x0100 | self.sp as u16, value);
+    fn push(&mut self, value: u8, ram: &mut Ram) {
+        ram.write(0x0100 | self.sp as u16, value);
 
         self.sp = self.sp.wrapping_sub(1);
     }
 
-    fn pop(&mut self) -> u8 {
+    fn pop(&mut self, ram: &mut Ram) -> u8 {
         self.sp = self.sp.wrapping_add(1);
-        self.ram.read(0x0100 | self.sp as u16)
+        ram.read(0x0100 | self.sp as u16)
     }
 
-    fn push_long(&mut self, value: u16) {
-        self.push(((value >> 8) & 0xff).try_into().unwrap());
-        self.push((value & 0xff).try_into().unwrap());
+    fn push_long(&mut self, value: u16, ram: &mut Ram) {
+        self.push(((value >> 8) & 0xff).try_into().unwrap(), ram);
+        self.push((value & 0xff).try_into().unwrap(), ram);
     }
 
-    fn pop_long(&mut self) -> u16 {
-        let mut addr = self.pop() as u16;
-        addr |= (self.pop() as u16) << 8;
+    fn pop_long(&mut self, ram: &mut Ram) -> u16 {
+        let mut addr = self.pop(ram) as u16;
+        addr |= (self.pop(ram) as u16) << 8;
         return addr;
     }
 
-    fn lda(&mut self, addr: u16) {
-        self.a = self.ram.read(addr);
+    fn lda(&mut self, addr: u16, ram: &mut Ram) {
+        self.a = ram.read(addr);
 
         self.zero_flag = self.a == 0;
 
@@ -369,8 +367,8 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn ldx(&mut self, addr: u16) {
-        self.x = self.ram.read(addr);
+    fn ldx(&mut self, addr: u16, ram: &mut Ram) {
+        self.x = ram.read(addr);
 
         self.zero_flag = self.x == 0;
         self.negative_flag = self.x & NEGATIVE_MASK != 0;
@@ -378,8 +376,8 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn ldy(&mut self, addr: u16) {
-        self.y = self.ram.read(addr);
+    fn ldy(&mut self, addr: u16, ram: &mut Ram) {
+        self.y = ram.read(addr);
 
         self.zero_flag = self.y == 0;
         self.negative_flag = self.y & NEGATIVE_MASK != 0;
@@ -387,25 +385,25 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn sta(&mut self, addr: u16) {
-        self.ram.write(addr, self.a);
+    fn sta(&mut self, addr: u16, ram: &mut Ram) {
+        ram.write(addr, self.a);
 
         self.pc += 1;
     }
 
-    fn stx(&mut self, addr: u16) {
-        self.ram.write(addr, self.x);
+    fn stx(&mut self, addr: u16, ram: &mut Ram) {
+        ram.write(addr, self.x);
 
         self.pc += 1;
     }
 
-    fn sty(&mut self, addr: u16) {
-        self.ram.write(addr, self.y);
+    fn sty(&mut self, addr: u16, ram: &mut Ram) {
+        ram.write(addr, self.y);
 
         self.pc += 1;
     }
 
-    fn tax(&mut self) {
+    fn tax(&mut self, _: &mut Ram) {
         self.x = self.a;
 
         self.zero_flag = self.x == 0;
@@ -414,7 +412,7 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn tay(&mut self) {
+    fn tay(&mut self, _: &mut Ram) {
         self.y = self.a;
 
         self.zero_flag = self.y == 0;
@@ -423,7 +421,7 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn txa(&mut self) {
+    fn txa(&mut self, _: &mut Ram) {
         self.a = self.x;
 
         self.zero_flag = self.a == 0;
@@ -432,7 +430,7 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn tya(&mut self) {
+    fn tya(&mut self, _: &mut Ram) {
         self.a = self.y;
 
         self.zero_flag = self.a == 0;
@@ -441,7 +439,7 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn tsx(&mut self) {
+    fn tsx(&mut self, _: &mut Ram) {
         self.x = self.sp;
 
         self.zero_flag = self.x == 0;
@@ -450,14 +448,14 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn txs(&mut self) {
+    fn txs(&mut self, _: &mut Ram) {
         self.sp = self.x;
 
         self.pc += 1;
     }
 
-    fn pha(&mut self) {
-        self.push(self.a);
+    fn pha(&mut self, ram: &mut Ram) {
+        self.push(self.a, ram);
 
         self.pc += 1;
     }
@@ -477,18 +475,18 @@ impl Cpu {
         return status;
     }
 
-    fn php(&mut self) {
+    fn php(&mut self, ram: &mut Ram) {
         // TODO: Find if this is realy correct
         self.reserved_flag = true;
         self.break_cmd_flag = true;
 
-        self.push(self.status_to_word());
+        self.push(self.status_to_word(), ram);
 
         self.pc += 1;
     }
 
-    fn pla(&mut self) {
-        self.a = self.pop();
+    fn pla(&mut self, ram: &mut Ram) {
+        self.a = self.pop(ram);
 
         self.zero_flag = self.a == 0;
         self.negative_flag = self.a & NEGATIVE_MASK != 0;
@@ -507,15 +505,15 @@ impl Cpu {
         self.negative_flag = ((word >> 7) & 1) != 0;
     }
 
-    fn plp(&mut self) {
-        let status = self.pop();
+    fn plp(&mut self, ram: &mut Ram) {
+        let status = self.pop(ram);
         self.word_to_status(status);
 
         self.pc += 1;
     }
 
-    fn and(&mut self, addr: u16) {
-        self.a &= self.ram.read(addr);
+    fn and(&mut self, addr: u16, ram: &mut Ram) {
+        self.a &= ram.read(addr);
 
         self.zero_flag = self.a == 0;
         self.negative_flag = self.a & NEGATIVE_MASK != 0;
@@ -523,8 +521,8 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn eor(&mut self, addr: u16) {
-        self.a ^= self.ram.read(addr);
+    fn eor(&mut self, addr: u16, ram: &mut Ram) {
+        self.a ^= ram.read(addr);
 
         self.zero_flag = self.a == 0;
         self.negative_flag = self.a & NEGATIVE_MASK != 0;
@@ -532,8 +530,8 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn ora(&mut self, addr: u16) {
-        self.a |= self.ram.read(addr);
+    fn ora(&mut self, addr: u16, ram: &mut Ram) {
+        self.a |= ram.read(addr);
 
         self.zero_flag = self.a == 0;
         self.negative_flag = self.a & NEGATIVE_MASK != 0;
@@ -541,8 +539,8 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn bit(&mut self, addr: u16) {
-        let value = self.ram.read(addr);
+    fn bit(&mut self, addr: u16, ram: &mut Ram) {
+        let value = ram.read(addr);
 
         self.zero_flag = self.a & value == 0;
         self.overflow_flag = value & 1 << 6 != 0;
@@ -551,21 +549,21 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn jmp(&mut self, addr: u16) {
+    fn jmp(&mut self, addr: u16, _: &mut Ram) {
         self.pc = addr;
     }
 
-    fn jsr(&mut self, addr: u16) {
-        self.push_long(self.pc);
+    fn jsr(&mut self, addr: u16, ram: &mut Ram) {
+        self.push_long(self.pc, ram);
         self.pc = addr;
     }
 
-    fn rts(&mut self) {
-        let addr = self.pop_long();
+    fn rts(&mut self, ram: &mut Ram) {
+        let addr = self.pop_long(ram);
         self.pc = addr.wrapping_add(1);
     }
 
-    fn bne(&mut self, addr: u16) {
+    fn bne(&mut self, addr: u16, _: &mut Ram) {
         if !self.zero_flag {
             self.pc = self.pc.wrapping_add_signed((addr as i8) as i16);
         }
@@ -573,7 +571,7 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn beq(&mut self, addr: u16) {
+    fn beq(&mut self, addr: u16, _: &mut Ram) {
         if self.zero_flag {
             self.pc = self.pc.wrapping_add_signed((addr as i8) as i16);
         }
@@ -581,7 +579,7 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn bpl(&mut self, addr: u16) {
+    fn bpl(&mut self, addr: u16, _: &mut Ram) {
         if !self.negative_flag {
             self.pc = self.pc.wrapping_add_signed((addr as i8) as i16);
         }
@@ -589,7 +587,7 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn bcc(&mut self, addr: u16) {
+    fn bcc(&mut self, addr: u16, _: &mut Ram) {
         if !self.carry_flag {
             self.pc = self.pc.wrapping_add_signed((addr as i8) as i16);
         }
@@ -597,7 +595,7 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn bcs(&mut self, addr: u16) {
+    fn bcs(&mut self, addr: u16, _: &mut Ram) {
         if self.carry_flag {
             self.pc = self.pc.wrapping_add_signed((addr as i8) as i16);
         }
@@ -605,7 +603,7 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn bmi(&mut self, addr: u16) {
+    fn bmi(&mut self, addr: u16, _: &mut Ram) {
         if self.negative_flag {
             self.pc = self.pc.wrapping_add_signed((addr as i8) as i16);
         }
@@ -613,7 +611,7 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn bvc(&mut self, addr: u16) {
+    fn bvc(&mut self, addr: u16, _: &mut Ram) {
         if !self.overflow_flag {
             self.pc = self.pc.wrapping_add_signed((addr as i8) as i16);
         }
@@ -621,7 +619,7 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn bvs(&mut self, addr: u16) {
+    fn bvs(&mut self, addr: u16, _: &mut Ram) {
         if self.overflow_flag {
             self.pc = self.pc.wrapping_add_signed((addr as i8) as i16);
         }
@@ -629,7 +627,7 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn dex(&mut self) {
+    fn dex(&mut self, _: &mut Ram) {
         self.x = self.x.wrapping_sub(1);
 
         self.zero_flag = self.x == 0;
@@ -638,7 +636,7 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn dey(&mut self) {
+    fn dey(&mut self, _: &mut Ram) {
         self.y = self.y.wrapping_sub(1);
 
         self.zero_flag = self.y == 0;
@@ -647,7 +645,7 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn incx(&mut self) {
+    fn incx(&mut self, _: &mut Ram) {
         self.x = self.x.wrapping_add(1);
 
         self.zero_flag = self.x == 0;
@@ -656,7 +654,7 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn incy(&mut self) {
+    fn incy(&mut self, _: &mut Ram) {
         self.y = self.y.wrapping_add(1);
 
         self.zero_flag = self.y == 0;
@@ -675,14 +673,14 @@ impl Cpu {
         return value;
     }
 
-    fn asl(&mut self) {
+    fn asl(&mut self, _: &mut Ram) {
         self.a = self.shift_left(self.a);
     }
 
-    fn asl_addr(&mut self, addr: u16) {
-        let mut value = self.ram.read(addr);
+    fn asl_addr(&mut self, addr: u16, ram: &mut Ram) {
+        let mut value = ram.read(addr);
         value = self.shift_left(value);
-        self.ram.write(addr, value);
+        ram.write(addr, value);
     }
 
     fn shift_right(&mut self, mut value: u8) -> u8 {
@@ -695,14 +693,14 @@ impl Cpu {
         return value;
     }
 
-    fn lsr(&mut self) {
+    fn lsr(&mut self, _: &mut Ram) {
         self.a = self.shift_right(self.a);
     }
 
-    fn lsr_addr(&mut self, addr: u16) {
-        let mut value = self.ram.read(addr);
+    fn lsr_addr(&mut self, addr: u16, ram: &mut Ram) {
+        let mut value = ram.read(addr);
         value = self.shift_right(value);
-        self.ram.write(addr, value);
+        ram.write(addr, value);
     }
 
     fn rotate_left(&mut self, mut value: u8) -> u8 {
@@ -718,14 +716,14 @@ impl Cpu {
         return value;
     }
 
-    fn rol(&mut self) {
+    fn rol(&mut self, _: &mut Ram) {
         self.a = self.rotate_left(self.a);
     }
 
-    fn rol_addr(&mut self, addr: u16) {
-        let mut value = self.ram.read(addr);
+    fn rol_addr(&mut self, addr: u16, ram: &mut Ram) {
+        let mut value = ram.read(addr);
         value = self.rotate_left(value);
-        self.ram.write(addr, value);
+        ram.write(addr, value);
     }
 
     fn rotate_right(&mut self, mut value: u8) -> u8 {
@@ -741,60 +739,60 @@ impl Cpu {
         return value;
     }
 
-    fn ror(&mut self) {
+    fn ror(&mut self, _: &mut Ram) {
         self.a = self.rotate_right(self.a);
     }
 
-    fn ror_addr(&mut self, addr: u16) {
-        let mut value = self.ram.read(addr);
+    fn ror_addr(&mut self, addr: u16, ram: &mut Ram) {
+        let mut value = ram.read(addr);
         value = self.rotate_right(value);
-        self.ram.write(addr, value);
+        ram.write(addr, value);
     }
 
-    fn clc(&mut self) {
+    fn clc(&mut self, _: &mut Ram) {
         self.carry_flag = false;
 
         self.pc += 1;
     }
 
-    fn sec(&mut self) {
+    fn sec(&mut self, _: &mut Ram) {
         self.carry_flag = true;
 
         self.pc += 1;
     }
 
-    fn cld(&mut self) {
+    fn cld(&mut self, _: &mut Ram) {
         self.decimal_flag = false;
 
         self.pc += 1;
     }
 
-    fn sed(&mut self) {
+    fn sed(&mut self, _: &mut Ram) {
         self.decimal_flag = true;
 
         self.pc += 1;
     }
 
-    fn cli(&mut self) {
+    fn cli(&mut self, _: &mut Ram) {
         self.interrupt_flag = false;
 
         self.pc += 1;
     }
 
-    fn sei(&mut self) {
+    fn sei(&mut self, _: &mut Ram) {
         self.interrupt_flag = true;
 
         self.pc += 1;
     }
 
-    fn clv(&mut self) {
+    fn clv(&mut self, _: &mut Ram) {
         self.overflow_flag = false;
 
         self.pc += 1;
     }
 
-    fn cmp(&mut self, addr: u16) {
-        let value = self.ram.read(addr);
+    fn cmp(&mut self, addr: u16, ram: &mut Ram) {
+        let value = ram.read(addr);
 
         let res = self.a.wrapping_sub(value);
 
@@ -805,8 +803,8 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn cpx(&mut self, addr: u16) {
-        let value = self.ram.read(addr);
+    fn cpx(&mut self, addr: u16, ram: &mut Ram) {
+        let value = ram.read(addr);
 
         let res = self.x.wrapping_sub(value);
 
@@ -817,8 +815,8 @@ impl Cpu {
         self.pc += 1;
     }
 
-    fn cpy(&mut self, addr: u16) {
-        let value = self.ram.read(addr);
+    fn cpy(&mut self, addr: u16, ram: &mut Ram) {
+        let value = ram.read(addr);
 
         let res = self.y.wrapping_sub(value);
 
@@ -840,45 +838,45 @@ impl Cpu {
         self.negative_flag = self.a & NEGATIVE_MASK != 0;
     }
 
-    fn adc(&mut self, addr: u16) {
-        let value = self.ram.read(addr);
+    fn adc(&mut self, addr: u16, ram: &mut Ram) {
+        let value = ram.read(addr);
 
         self.add_with_carry(value);
 
         self.pc += 1;
     }
 
-    fn sbc(&mut self, addr: u16) {
-        let value = self.ram.read(addr);
+    fn sbc(&mut self, addr: u16, ram: &mut Ram) {
+        let value = ram.read(addr);
 
         self.add_with_carry(!value);
 
         self.pc += 1;
     }
 
-    fn brk(&mut self) {
-        self.push_long(self.pc + 2);
+    fn brk(&mut self, ram: &mut Ram) {
+        self.push_long(self.pc + 2, ram);
         self.break_cmd_flag = true;
         self.reserved_flag = true;
-        self.push(self.status_to_word());
+        self.push(self.status_to_word(), ram);
 
-        let mut addr: u16 = self.ram.read(0xfffe) as u16;
-        addr |= (self.ram.read(0xffff) as u16) << 8;
+        let mut addr: u16 = ram.read(0xfffe) as u16;
+        addr |= (ram.read(0xffff) as u16) << 8;
 
         self.pc = addr;
         self.interrupt_flag = true;
     }
 
-    fn rti(&mut self) {
-        let word = self.pop();
+    fn rti(&mut self, ram: &mut Ram) {
+        let word = self.pop(ram);
         self.word_to_status(word);
-        self.pc = self.pop_long();
+        self.pc = self.pop_long(ram);
     }
 
-    fn inc(&mut self, addr: u16) {
-        let mut value = self.ram.read(addr);
+    fn inc(&mut self, addr: u16, ram: &mut Ram) {
+        let mut value = ram.read(addr);
         value = value.wrapping_add(1);
-        self.ram.write(addr, value);
+        ram.write(addr, value);
 
         self.zero_flag = value == 0;
         self.negative_flag = value & NEGATIVE_MASK != 0;
@@ -886,10 +884,10 @@ impl Cpu {
         self.pc = self.pc.wrapping_add(1);
     }
 
-    fn dec(&mut self, addr: u16) {
-        let mut value = self.ram.read(addr);
+    fn dec(&mut self, addr: u16, ram: &mut Ram) {
+        let mut value = ram.read(addr);
         value = value.wrapping_sub(1);
-        self.ram.write(addr, value);
+        ram.write(addr, value);
 
         self.zero_flag = value == 0;
         self.negative_flag = value & NEGATIVE_MASK != 0;

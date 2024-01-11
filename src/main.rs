@@ -14,11 +14,14 @@ fn main() {
         eprintln!("usage: {} <file_name>", command);
         process::exit(1);
     });
-    let ram = Ram::from_raw_file(&file_name);
-    let mut cpu = Cpu::create(ram);
+
+    let mut ram = Ram::from_raw_file(&file_name);
+
+    let mut cpu = Cpu::new();
+
     cpu.pc = 0x400;
     while cpu.pc != 0x3469 {
-        cpu.read_instruction();
+        cpu.read_instruction(&mut ram);
     }
     println!("TEST PASSED");
 }
