@@ -69,9 +69,34 @@ impl Cpu {
 
     fn get_instruction(&mut self, opcode: u8) -> fn(&mut Cpu, &mut Ram) {
         match opcode {
-            0xEA => |cpu: &mut Cpu, _: &mut Ram| {
-                cpu.pc += 1;
-            }, // noop
+            0xEA => instr!(nop - imp),
+            0x1A => instr!(nop - imp),
+            0x3A => instr!(nop - imp),
+            0x5A => instr!(nop - imp),
+            0x7A => instr!(nop - imp),
+            0xDA => instr!(nop - imp),
+            0xFA => instr!(nop - imp),
+            0x80 => instr!(nop_addr - imm),
+            0x82 => instr!(nop_addr - imm),
+            0x89 => instr!(nop_addr - imm),
+            0xC2 => instr!(nop_addr - imm),
+            0xE2 => instr!(nop_addr - imm),
+            0x04 => instr!(nop_addr - zp),
+            0x44 => instr!(nop_addr - zp),
+            0x64 => instr!(nop_addr - zp),
+            0x14 => instr!(nop_addr - zpx),
+            0x34 => instr!(nop_addr - zpx),
+            0x54 => instr!(nop_addr - zpx),
+            0x74 => instr!(nop_addr - zpx),
+            0xD4 => instr!(nop_addr - zpx),
+            0xF4 => instr!(nop_addr - zpx),
+            0x0C => instr!(nop_addr - abs),
+            0x1C => instr!(nop_addr - abx),
+            0x3C => instr!(nop_addr - abx),
+            0x5C => instr!(nop_addr - abx),
+            0x7C => instr!(nop_addr - abx),
+            0xDC => instr!(nop_addr - abx),
+            0xFC => instr!(nop_addr - abx),
 
             0xA9 => instr!(lda - imm),
             0xA5 => instr!(lda - zp),
@@ -94,6 +119,13 @@ impl Cpu {
             0xAC => instr!(ldy - abs),
             0xBC => instr!(ldy - abx),
 
+            0xA7 => instr!(lax - zp),
+            0xB7 => instr!(lax - zpy),
+            0xAF => instr!(lax - abs),
+            0xBF => instr!(lax - aby),
+            0xA3 => instr!(lax - inx),
+            0xB3 => instr!(lax - iny),
+
             0x85 => instr!(sta - zp),
             0x95 => instr!(sta - zpx),
             0x8D => instr!(sta - abs),
@@ -109,6 +141,11 @@ impl Cpu {
             0x84 => instr!(sty - zp),
             0x94 => instr!(sty - zpx),
             0x8C => instr!(sty - abs),
+
+            0x87 => instr!(sax - zp),
+            0x97 => instr!(sax - zpy),
+            0x8F => instr!(sax - abs),
+            0x83 => instr!(sax - inx),
 
             0xAA => instr!(tax - imp),
 
@@ -188,11 +225,27 @@ impl Cpu {
             0x0E => instr!(asl_addr - abs),
             0x1E => instr!(asl_addr - abx),
 
+            0x07 => instr!(slo - zp),
+            0x17 => instr!(slo - zpx),
+            0x0F => instr!(slo - abs),
+            0x1F => instr!(slo - abx),
+            0x1B => instr!(slo - aby),
+            0x03 => instr!(slo - inx),
+            0x13 => instr!(slo - iny),
+
             0x4A => instr!(lsr - imp),
             0x46 => instr!(lsr_addr - zp),
             0x56 => instr!(lsr_addr - zpx),
             0x4E => instr!(lsr_addr - abs),
             0x5E => instr!(lsr_addr - abx),
+
+            0x47 => instr!(sre - zp),
+            0x57 => instr!(sre - zpx),
+            0x4F => instr!(sre - abs),
+            0x5F => instr!(sre - abx),
+            0x5B => instr!(sre - aby),
+            0x43 => instr!(sre - inx),
+            0x53 => instr!(sre - iny),
 
             0x2A => instr!(rol - imp),
             0x26 => instr!(rol_addr - zp),
@@ -200,11 +253,27 @@ impl Cpu {
             0x2E => instr!(rol_addr - abs),
             0x3E => instr!(rol_addr - abx),
 
+            0x27 => instr!(rla - zp),
+            0x37 => instr!(rla - zpx),
+            0x2F => instr!(rla - abs),
+            0x3F => instr!(rla - abx),
+            0x3B => instr!(rla - aby),
+            0x23 => instr!(rla - inx),
+            0x33 => instr!(rla - iny),
+
             0x6A => instr!(ror - imp),
             0x66 => instr!(ror_addr - zp),
             0x76 => instr!(ror_addr - zpx),
             0x6E => instr!(ror_addr - abs),
             0x7E => instr!(ror_addr - abx),
+
+            0x67 => instr!(rra - zp),
+            0x77 => instr!(rra - zpx),
+            0x6F => instr!(rra - abs),
+            0x7F => instr!(rra - abx),
+            0x7B => instr!(rra - aby),
+            0x63 => instr!(rra - inx),
+            0x73 => instr!(rra - iny),
 
             0x18 => instr!(clc - imp),
             0x38 => instr!(sec - imp),
@@ -244,6 +313,7 @@ impl Cpu {
             0x71 => instr!(adc - iny),
 
             0xE9 => instr!(sbc - imm),
+            0xEB => instr!(sbc - imm),
             0xE5 => instr!(sbc - zp),
             0xF5 => instr!(sbc - zpx),
             0xED => instr!(sbc - abs),
@@ -261,10 +331,26 @@ impl Cpu {
             0xEE => instr!(inc - abs),
             0xFE => instr!(inc - abx),
 
+            0xE7 => instr!(isc - zp),
+            0xF7 => instr!(isc - zpx),
+            0xEF => instr!(isc - abs),
+            0xFF => instr!(isc - abx),
+            0xFB => instr!(isc - aby),
+            0xE3 => instr!(isc - inx),
+            0xF3 => instr!(isc - iny),
+
             0xC6 => instr!(dec - zp),
             0xD6 => instr!(dec - zpx),
             0xCE => instr!(dec - abs),
             0xDE => instr!(dec - abx),
+
+            0xC7 => instr!(dcp - zp),
+            0xD7 => instr!(dcp - zpx),
+            0xCF => instr!(dcp - abs),
+            0xDF => instr!(dcp - abx),
+            0xDB => instr!(dcp - aby),
+            0xC3 => instr!(dcp - inx),
+            0xD3 => instr!(dcp - iny),
 
             _ => unimplemented!("{:#04X} opcode not implemented yet!\n", opcode),
         }
@@ -357,6 +443,14 @@ impl Cpu {
         return addr;
     }
 
+    fn nop(&mut self, _: &mut Ram) {
+        self.pc += 1;
+    }
+
+    fn nop_addr(&mut self, _: u16, _: &mut Ram) {
+        self.pc += 1;
+    }
+
     fn lda(&mut self, addr: u16, ram: &mut Ram) {
         self.a = ram.read(addr);
 
@@ -385,6 +479,17 @@ impl Cpu {
         self.pc += 1;
     }
 
+    fn lax(&mut self, addr: u16, ram: &mut Ram) {
+        let value = ram.read(addr);
+        self.x = value;
+        self.a = value;
+
+        self.zero_flag = self.a == 0;
+        self.negative_flag = self.a & NEGATIVE_MASK != 0;
+
+        self.pc += 1;
+    }
+
     fn sta(&mut self, addr: u16, ram: &mut Ram) {
         ram.write(addr, self.a);
 
@@ -399,6 +504,12 @@ impl Cpu {
 
     fn sty(&mut self, addr: u16, ram: &mut Ram) {
         ram.write(addr, self.y);
+
+        self.pc += 1;
+    }
+
+    fn sax(&mut self, addr: u16, ram: &mut Ram) {
+        ram.write(addr, self.a & self.x);
 
         self.pc += 1;
     }
@@ -683,6 +794,12 @@ impl Cpu {
         ram.write(addr, value);
     }
 
+    fn slo(&mut self, addr: u16, ram: &mut Ram) {
+        self.asl_addr(addr, ram);
+        self.pc = self.pc.wrapping_sub(1);
+        self.ora(addr, ram);
+    }
+
     fn shift_right(&mut self, mut value: u8) -> u8 {
         self.carry_flag = value & 1 != 0;
         value >>= 1;
@@ -701,6 +818,12 @@ impl Cpu {
         let mut value = ram.read(addr);
         value = self.shift_right(value);
         ram.write(addr, value);
+    }
+
+    fn sre(&mut self, addr: u16, ram: &mut Ram) {
+        self.lsr_addr(addr, ram);
+        self.pc = self.pc.wrapping_sub(1);
+        self.eor(addr, ram);
     }
 
     fn rotate_left(&mut self, mut value: u8) -> u8 {
@@ -726,6 +849,12 @@ impl Cpu {
         ram.write(addr, value);
     }
 
+    fn rla(&mut self, addr: u16, ram: &mut Ram) {
+        self.rol_addr(addr, ram);
+        self.pc = self.pc.wrapping_sub(1);
+        self.and(addr, ram);
+    }
+
     fn rotate_right(&mut self, mut value: u8) -> u8 {
         let old = value;
         value >>= 1;
@@ -747,6 +876,12 @@ impl Cpu {
         let mut value = ram.read(addr);
         value = self.rotate_right(value);
         ram.write(addr, value);
+    }
+
+    fn rra(&mut self, addr: u16, ram: &mut Ram) {
+        self.ror_addr(addr, ram);
+        self.pc = self.pc.wrapping_sub(1);
+        self.adc(addr, ram);
     }
 
     fn clc(&mut self, _: &mut Ram) {
@@ -884,6 +1019,12 @@ impl Cpu {
         self.pc = self.pc.wrapping_add(1);
     }
 
+    fn isc(&mut self, addr: u16, ram: &mut Ram) {
+        self.inc(addr, ram);
+        self.pc = self.pc.wrapping_sub(1);
+        self.sbc(addr, ram);
+    }
+
     fn dec(&mut self, addr: u16, ram: &mut Ram) {
         let mut value = ram.read(addr);
         value = value.wrapping_sub(1);
@@ -893,5 +1034,11 @@ impl Cpu {
         self.negative_flag = value & NEGATIVE_MASK != 0;
 
         self.pc = self.pc.wrapping_add(1);
+    }
+
+    fn dcp(&mut self, addr: u16, ram: &mut Ram) {
+        self.dec(addr, ram);
+        self.pc = self.pc.wrapping_sub(1);
+        self.cmp(addr, ram);
     }
 }
