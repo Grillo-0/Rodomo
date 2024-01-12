@@ -10,7 +10,7 @@ impl INes {
         let bytes = fs::read(path).expect("could not read file!");
         assert_eq!(String::from_utf8_lossy(&bytes[0..3]), "NES");
 
-        let program_size = 16 * 1 << 10 * bytes[4];
+        let program_size = 16 * (1 << 10) * bytes[4] as usize;
         let program_rom_offset = 16;
 
         INes {
