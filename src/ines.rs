@@ -3,6 +3,7 @@ use std::fs;
 #[derive(Debug)]
 pub struct INes {
     pub program: Vec<u8>,
+    pub chr_rom: Option<Vec<u8>>,
 }
 
 impl INes {
@@ -17,8 +18,16 @@ impl INes {
         let program_size = 16 * (1 << 10) * bytes[4] as usize;
         let program_rom_offset = 16 + 512 * (flags_6 & TRAINER_MASK) as usize;
 
+        let chr_rom_size = 8 * (1 << 10) * bytes[5] as usize;
+        let chr_rom_offset = program_rom_offset + program_size;
+
         INes {
             program: bytes[(program_rom_offset)..(program_rom_offset + program_size)].to_vec(),
+            chr_rom: if program_size != 0 {
+                Some(bytes[(chr_rom_offset)..(chr_rom_offset + chr_rom_size)].to_vec())
+            } else {
+                None
+            },
         }
     }
 }

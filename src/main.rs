@@ -60,6 +60,9 @@ fn main() {
     ram.load_vec_at(rom.program, 0xc000);
 
     let mut ppu_mem = Ram::new();
+    if let Some(chr_rom) = rom.chr_rom {
+        ppu_mem.load_vec_at(chr_rom, 0);
+    }
 
     let mut nes = Machine::new(ram, ppu_mem);
 
