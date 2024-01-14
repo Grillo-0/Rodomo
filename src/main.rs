@@ -27,22 +27,13 @@ impl Machine {
     }
 
     fn power_on(&mut self) {
-        let mut pos_02 = self.memory.read(0x02);
-        let mut pos_03 = self.memory.read(0x03);
 
         self.cpu.reset(&self.memory);
 
         loop {
-            if pos_02 != self.memory.read(0x02) && pos_03 != self.memory.read(0x03) {
-                break;
-            }
-            println!("0x{:04x}", self.cpu.pc);
             self.cpu.read_instruction(&mut self.memory);
             self.ppu.read_instruction(&mut self.memory);
 
-        pos_02 = self.memory.read(0x02);
-        pos_03 = self.memory.read(0x03);
-        println!("0x02:{:#02x} 0x03:{:#02x}", pos_02, pos_03);
         }
     }
 }
@@ -69,5 +60,4 @@ fn main() {
     let mut nes = Machine::new(ram, ppu_mem);
 
     nes.power_on();
-    println!("TEST PASSED");
 }
