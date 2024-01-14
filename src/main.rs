@@ -58,7 +58,8 @@ fn main() {
     let rom = INes::parse(&file_name);
 
     let mut ram = Ram::new();
-    ram.load_vec_at(rom.program, 0xc000);
+    let prg_start = ((1 << 16) - rom.program.len()).try_into().unwrap();
+    ram.load_vec_at(rom.program, prg_start);
 
     let mut ppu_mem = Ram::new();
     if let Some(chr_rom) = rom.chr_rom {
