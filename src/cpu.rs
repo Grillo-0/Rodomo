@@ -68,6 +68,12 @@ impl Cpu {
         self.pc = reset_addr;
     }
 
+    pub fn nmi(&mut self, ram: &Ram) {
+        let mut nmi_addr = ram.read(0xfffa) as u16;
+        nmi_addr |= (ram.read(0xfffb) as u16) << 8;
+        self.pc = nmi_addr;
+    }
+
     pub fn read_instruction(&mut self, ram: &mut Ram) {
         let opcode = ram.read(self.pc.into());
         self.get_instruction(opcode)(self, ram);

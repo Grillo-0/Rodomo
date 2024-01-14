@@ -50,10 +50,29 @@ impl Machine {
 
         self.cpu.reset(&self.memory);
 
-        loop {
-            self.cpu.read_instruction(&mut self.memory);
-            self.ppu.read_instruction(&mut self.memory);
+        const FPS: f32 = 60.0;
+        let frame_time = time::Duration::from_secs_f32(1.0 / FPS);
 
+        const SCANLINES_PER_FRAME: u32 = 262;
+        const PPU_CYCLES_PER_SCANLINE: u32 = 341;
+
+        loop {
+            let start = time::Instant::now();
+
+            for scanline in 0..SCANLINES_PER_FRAME {
+                let mut should_nmi = false;
+                for tick in 0..PPU_CYCLES_PER_SCANLINE {
+                    if tick % 3 == 0 {
+                        self.cpu.read_instruction(&mut self.memory);
+                    }
+
+                    should_nmi = self.ppu.read_instruction(&mut self.memory)
+                }
+
+                if scanline == 241 && should_nmi {
+                    self.cpu.nmi(&self.memory);
+                }
+            }
             canvas.present();
 
             for e in events.poll_iter() {
@@ -62,7 +81,10 @@ impl Machine {
                     _ => {}
                 }
             }
-            thread::sleep(time::Duration::from_secs_f64(1.0 / 60.0));
+
+            let elapsed_time = start.elapsed();
+
+            thread::sleep(frame_time.saturating_sub(elapsed_time));
         }
     }
 }

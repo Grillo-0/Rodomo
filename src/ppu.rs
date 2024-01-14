@@ -22,7 +22,7 @@ impl Ppu {
         }
     }
 
-    pub fn read_instruction(&mut self, cpu_memory: &mut Ram) {
+    pub fn read_instruction(&mut self, cpu_memory: &mut Ram) -> bool {
         self.control = cpu_memory.read(0x2000);
         self.mask = cpu_memory.read(0x2001);
         self.status = cpu_memory.read(0x2002);
@@ -32,5 +32,7 @@ impl Ppu {
         self.addr = cpu_memory.read(0x2006);
         self.data = cpu_memory.read(0x2007);
         self.oam_dma = cpu_memory.read(0x4014);
+
+        return true;
     }
 }
