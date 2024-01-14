@@ -62,6 +62,12 @@ impl Cpu {
         }
     }
 
+    pub fn reset(&mut self, ram: &Ram) {
+        let mut reset_addr = ram.read(0xfffc) as u16;
+        reset_addr |= (ram.read(0xfffd) as u16) << 8;
+        self.pc = reset_addr;
+    }
+
     pub fn read_instruction(&mut self, ram: &mut Ram) {
         let opcode = ram.read(self.pc.into());
         self.get_instruction(opcode)(self, ram);

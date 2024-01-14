@@ -27,9 +27,10 @@ impl Machine {
     }
 
     fn power_on(&mut self) {
-        self.cpu.pc = 0xc000;
         let mut pos_02 = self.memory.read(0x02);
         let mut pos_03 = self.memory.read(0x03);
+
+        self.cpu.reset(&self.memory);
 
         loop {
             if pos_02 != self.memory.read(0x02) && pos_03 != self.memory.read(0x03) {
