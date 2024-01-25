@@ -14,5 +14,5 @@ A basic NES emulator.
 
 ```console
 $ cargo build
-$ cargo run <file-name>
+$ cargo run --release <file-name>
 ```
