@@ -1,6 +1,5 @@
-extern crate sdl2;
-
 pub mod cpu;
+pub mod gfx;
 pub mod ines;
 pub mod ppu;
 pub mod ram;
@@ -10,8 +9,8 @@ use std::process;
 use std::thread;
 use std::time;
 
-use sdl2::event::Event;
-use sdl2::Sdl;
+use glow::HasContext;
+use sdl2::event::{Event, WindowEvent};
 
 use crate::cpu::Cpu;
 use crate::ines::INes;
@@ -22,33 +21,27 @@ struct Machine {
     cpu: Cpu,
     ppu: Ppu,
     memory: Ram,
-    ctx: Sdl,
 }
 
 impl Machine {
-    fn new(memory: Ram, ppu_memory: Ram, ctx: Sdl) -> Machine {
+    fn new(memory: Ram, ppu_memory: Ram) -> Machine {
         Machine {
             cpu: Cpu::new(),
             ppu: Ppu::new(ppu_memory),
-            memory: memory,
-            ctx,
+            memory,
         }
     }
 
     fn power_on(&mut self) {
-        let video = self.ctx.video().unwrap();
+        let (sdl, _video, window, gl, _gl_ctx) = gfx::setup();
 
-        let window = video
-            .window("emulator", 800, 600)
-            .position_centered()
-            .resizable()
-            .build()
-            .unwrap();
-
-        let mut canvas = window.into_canvas().build().unwrap();
-        let mut events = self.ctx.event_pump().unwrap();
+        let mut events = sdl.event_pump().unwrap();
 
         self.cpu.reset(&self.memory);
+        self.ppu.precal_chars(&gl);
+        unsafe {
+            gl.clear_color(0.1, 0.2, 0.3, 1.0);
+        }
 
         const FPS: f32 = 60.0;
         let frame_time = time::Duration::from_secs_f32(1.0 / FPS);
@@ -73,10 +66,24 @@ impl Machine {
                     self.cpu.nmi(&self.memory);
                 }
             }
-            canvas.present();
+
+            self.ppu.draw(&gl);
+            window.gl_swap_window();
 
             for e in events.poll_iter() {
                 match e {
+                    Event::Window {
+                        timestamp: _,
+                        window_id: _,
+                        win_event,
+                    } => match win_event {
+                        WindowEvent::Resized(width, height) => {
+                            unsafe {
+                                gl.viewport(0, 0, width, height);
+                            };
+                        }
+                        _ => {}
+                    },
                     Event::Quit { .. } => process::exit(0),
                     _ => {}
                 }
@@ -108,9 +115,7 @@ fn main() {
         ppu_mem.load_vec_at(chr_rom, 0);
     }
 
-    let ctx = sdl2::init().unwrap();
-
-    let mut nes = Machine::new(ram, ppu_mem, ctx);
+    let mut nes = Machine::new(ram, ppu_mem);
 
     nes.power_on();
 }
