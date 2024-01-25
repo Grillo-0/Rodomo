@@ -8,8 +8,7 @@ A basic NES emulator.
 # Features
 
 - Almost complete 6502 CPU implementation with just some illegal opcodes missing
-- Support to a subset of the [iNES](https://www.nesdev.org/wiki/INES) file
-  format. (only reads the PRG ROM)
+- Support to [iNES](https://www.nesdev.org/wiki/INES) file format.
 
 ## Build from Source
 
