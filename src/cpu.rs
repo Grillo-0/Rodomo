@@ -23,19 +23,570 @@ pub struct Cpu {
     negative_flag: bool,
 }
 
-macro_rules! instr {
-    ($instruction:ident-imp) => {
-        |cpu: &mut Cpu, ram: &mut Ram| {
-            cpu.$instruction(ram);
-        }
-    };
-    ($instruction:ident-$addr_mode:ident) => {
-        |cpu: &mut Cpu, ram: &mut Ram| {
-            let addr = cpu.$addr_mode(ram);
-            cpu.$instruction(addr, ram);
+#[derive(Debug, Clone)]
+enum AddressingMode {
+    Implicit,
+    Accumulator,
+    Immediate,
+    ZeroPage,
+    ZeroPageX,
+    ZeroPageY,
+    Relative,
+    Absolute,
+    AbsoluteX,
+    AbsoluteY,
+    Indirect,
+    IndexedIndirect,
+    IndirectIndexed,
+}
+
+trait InstructionTrait {
+    fn instr(cpu: &mut Cpu, addr: u16, mem: &mut Ram);
+
+    fn run_with(addr_mode: AddressingMode, cpu: &mut Cpu, mem: &mut Ram);
+}
+
+macro_rules! impl_instr {
+    ($instruction:ident, $instruction_logic:expr) => {
+        struct $instruction;
+        impl InstructionTrait for $instruction {
+            fn instr(cpu: &mut Cpu, addr: u16, mem: &mut Ram) {
+                $instruction_logic(cpu, addr, mem);
+            }
+
+            fn run_with(addr_mode: AddressingMode, cpu: &mut Cpu, mem: &mut Ram) {
+                use AddressingMode::*;
+                let addr = match addr_mode {
+                    Implicit | Accumulator => 0,
+                    Immediate => cpu.imm(mem),
+                    ZeroPage | Relative => cpu.zp(mem),
+                    ZeroPageX => cpu.zpx(mem),
+                    ZeroPageY => cpu.zpy(mem),
+                    Absolute => cpu.abs(mem),
+                    AbsoluteX => cpu.abx(mem),
+                    AbsoluteY => cpu.aby(mem),
+                    Indirect => cpu.ind(mem),
+                    IndirectIndexed => cpu.inx(mem),
+                    IndexedIndirect => cpu.iny(mem),
+                };
+
+                Self::instr(cpu, addr, mem);
+            }
         }
     };
 }
+
+impl_instr!(Nop, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.pc += 1;
+});
+
+impl_instr!(Lda, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    cpu.a = mem.read(addr);
+
+    cpu.zero_flag = cpu.a == 0;
+
+    cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Ldx, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    cpu.x = mem.read(addr);
+
+    cpu.zero_flag = cpu.x == 0;
+    cpu.negative_flag = cpu.x & NEGATIVE_MASK != 0;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Ldy, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    cpu.y = mem.read(addr);
+
+    cpu.zero_flag = cpu.y == 0;
+    cpu.negative_flag = cpu.y & NEGATIVE_MASK != 0;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Lax, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    let value = mem.read(addr);
+    cpu.x = value;
+    cpu.a = value;
+
+    cpu.zero_flag = cpu.a == 0;
+    cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Sta, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    mem.write(addr, cpu.a);
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Stx, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    mem.write(addr, cpu.x);
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Sty, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    mem.write(addr, cpu.y);
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Sax, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    mem.write(addr, cpu.a & cpu.x);
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Tax, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.x = cpu.a;
+
+    cpu.zero_flag = cpu.x == 0;
+    cpu.negative_flag = cpu.x & NEGATIVE_MASK != 0;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Tay, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.y = cpu.a;
+
+    cpu.zero_flag = cpu.y == 0;
+    cpu.negative_flag = cpu.y & NEGATIVE_MASK != 0;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Txa, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.a = cpu.x;
+
+    cpu.zero_flag = cpu.a == 0;
+    cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Tya, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.a = cpu.y;
+
+    cpu.zero_flag = cpu.a == 0;
+    cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Tsx, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.x = cpu.sp;
+
+    cpu.zero_flag = cpu.x == 0;
+    cpu.negative_flag = cpu.x & NEGATIVE_MASK != 0;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Txs, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.sp = cpu.x;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Pha, |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+    cpu.push(cpu.a, mem);
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Php, |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+    // TODO: Find if this is realy correct
+    cpu.reserved_flag = true;
+    cpu.break_cmd_flag = true;
+
+    cpu.push(cpu.status_to_word(), mem);
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Pla, |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+    cpu.a = cpu.pop(mem);
+
+    cpu.zero_flag = cpu.a == 0;
+    cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Plp, |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+    let status = cpu.pop(mem);
+    cpu.word_to_status(status);
+
+    cpu.pc += 1;
+});
+
+impl_instr!(And, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    cpu.a &= mem.read(addr);
+
+    cpu.zero_flag = cpu.a == 0;
+    cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Eor, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    cpu.a ^= mem.read(addr);
+
+    cpu.zero_flag = cpu.a == 0;
+    cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Ora, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    cpu.a |= mem.read(addr);
+
+    cpu.zero_flag = cpu.a == 0;
+    cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Bit, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    let value = mem.read(addr);
+
+    cpu.zero_flag = cpu.a & value == 0;
+    cpu.overflow_flag = value & 1 << 6 != 0;
+    cpu.negative_flag = value & NEGATIVE_MASK != 0;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Jmp, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    cpu.pc = addr;
+});
+
+impl_instr!(Jsr, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    cpu.push_long(cpu.pc, mem);
+    cpu.pc = addr;
+});
+
+impl_instr!(Rts, |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+    let addr = cpu.pop_long(mem);
+    cpu.pc = addr.wrapping_add(1);
+});
+
+impl_instr!(Bne, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    if !cpu.zero_flag {
+        cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+    }
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Beq, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    if cpu.zero_flag {
+        cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+    }
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Bpl, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    if !cpu.negative_flag {
+        cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+    }
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Bcc, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    if !cpu.carry_flag {
+        cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+    }
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Bcs, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    if cpu.carry_flag {
+        cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+    }
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Bmi, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    if cpu.negative_flag {
+        cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+    }
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Bvc, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    if !cpu.overflow_flag {
+        cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+    }
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Bvs, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    if cpu.overflow_flag {
+        cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+    }
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Dex, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.x = cpu.x.wrapping_sub(1);
+
+    cpu.zero_flag = cpu.x == 0;
+    cpu.negative_flag = (cpu.x >> 7) & 1 == 1;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Dey, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.y = cpu.y.wrapping_sub(1);
+
+    cpu.zero_flag = cpu.y == 0;
+    cpu.negative_flag = (cpu.y >> 7) & 1 == 1;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Inc, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    let mut value = mem.read(addr);
+    value = value.wrapping_add(1);
+    mem.write(addr, value);
+
+    cpu.zero_flag = value == 0;
+    cpu.negative_flag = value & NEGATIVE_MASK != 0;
+
+    cpu.pc = cpu.pc.wrapping_add(1);
+});
+
+impl_instr!(Incx, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.x = cpu.x.wrapping_add(1);
+
+    cpu.zero_flag = cpu.x == 0;
+    cpu.negative_flag = (cpu.x >> 7) & 1 == 1;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Incy, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.y = cpu.y.wrapping_add(1);
+
+    cpu.zero_flag = cpu.y == 0;
+    cpu.negative_flag = (cpu.y >> 7) & 1 == 1;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Asl, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.a = cpu.shift_left(cpu.a);
+});
+
+impl_instr!(AslAddr, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    let mut value = mem.read(addr);
+    value = cpu.shift_left(value);
+    mem.write(addr, value);
+});
+
+impl_instr!(Slo, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    AslAddr::instr(cpu, addr, mem);
+    cpu.pc = cpu.pc.wrapping_sub(1);
+    Ora::instr(cpu, addr, mem);
+});
+
+impl_instr!(Lsr, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.a = cpu.shift_right(cpu.a);
+});
+
+impl_instr!(LsrAddr, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    let mut value = mem.read(addr);
+    value = cpu.shift_right(value);
+    mem.write(addr, value);
+});
+
+impl_instr!(Sre, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    LsrAddr::instr(cpu, addr, mem);
+    cpu.pc = cpu.pc.wrapping_sub(1);
+    Eor::instr(cpu, addr, mem);
+});
+
+impl_instr!(Rol, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.a = cpu.rotate_left(cpu.a);
+});
+
+impl_instr!(RolAddr, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    let mut value = mem.read(addr);
+    value = cpu.rotate_left(value);
+    mem.write(addr, value);
+});
+
+impl_instr!(Rla, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    RolAddr::instr(cpu, addr, mem);
+    cpu.pc = cpu.pc.wrapping_sub(1);
+    And::instr(cpu, addr, mem);
+});
+
+impl_instr!(Ror, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.a = cpu.rotate_right(cpu.a);
+});
+
+impl_instr!(RorAddr, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    let mut value = mem.read(addr);
+    value = cpu.rotate_right(value);
+    mem.write(addr, value);
+});
+
+impl_instr!(Rra, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    RorAddr::instr(cpu, addr, mem);
+    cpu.pc = cpu.pc.wrapping_sub(1);
+    Adc::instr(cpu, addr, mem);
+});
+
+impl_instr!(Clc, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.carry_flag = false;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Sec, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.carry_flag = true;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Cld, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.decimal_flag = false;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Sed, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.decimal_flag = true;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Cli, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.interrupt_flag = false;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Sei, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.interrupt_flag = true;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Clv, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    cpu.overflow_flag = false;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Cmp, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    let value = mem.read(addr);
+
+    let res = cpu.a.wrapping_sub(value);
+
+    cpu.carry_flag = cpu.a >= value;
+    cpu.zero_flag = cpu.a == value;
+    cpu.negative_flag = res & NEGATIVE_MASK != 0;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Cpx, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    let value = mem.read(addr);
+
+    let res = cpu.x.wrapping_sub(value);
+
+    cpu.carry_flag = cpu.x >= value;
+    cpu.zero_flag = cpu.x == value;
+    cpu.negative_flag = res & NEGATIVE_MASK != 0;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Cpy, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    let value = mem.read(addr);
+
+    let res = cpu.y.wrapping_sub(value);
+
+    cpu.carry_flag = cpu.y >= value;
+    cpu.zero_flag = cpu.y == value;
+    cpu.negative_flag = res & NEGATIVE_MASK != 0;
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Adc, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    let value = mem.read(addr);
+
+    cpu.add_with_carry(value);
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Sbc, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    let value = mem.read(addr);
+
+    cpu.add_with_carry(!value);
+
+    cpu.pc += 1;
+});
+
+impl_instr!(Brk, |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+    cpu.push_long(cpu.pc + 2, mem);
+    cpu.break_cmd_flag = true;
+    cpu.reserved_flag = true;
+    cpu.push(cpu.status_to_word(), mem);
+
+    let mut addr: u16 = mem.read(0xfffe) as u16;
+    addr |= (mem.read(0xffff) as u16) << 8;
+
+    cpu.pc = addr;
+    cpu.interrupt_flag = true;
+});
+
+impl_instr!(Rti, |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+    let word = cpu.pop(mem);
+    cpu.word_to_status(word);
+    cpu.pc = cpu.pop_long(mem);
+});
+
+impl_instr!(Isc, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    Inc::instr(cpu, addr, mem);
+    cpu.pc = cpu.pc.wrapping_sub(1);
+    Sbc::instr(cpu, addr, mem);
+});
+
+impl_instr!(Dec, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    let mut value = mem.read(addr);
+    value = value.wrapping_sub(1);
+    mem.write(addr, value);
+
+    cpu.zero_flag = value == 0;
+    cpu.negative_flag = value & NEGATIVE_MASK != 0;
+
+    cpu.pc = cpu.pc.wrapping_add(1);
+});
+
+impl_instr!(Dcp, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    Dec::instr(cpu, addr, mem);
+    cpu.pc = cpu.pc.wrapping_sub(1);
+    Cmp::instr(cpu, addr, mem);
+});
 
 impl fmt::Display for Cpu {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -76,293 +627,293 @@ impl Cpu {
 
     pub fn read_instruction(&mut self, ram: &mut Ram) {
         let opcode = ram.read(self.pc.into());
-        self.get_instruction(opcode)(self, ram);
+        self.run_instruction(opcode, ram);
     }
 
-    fn get_instruction(&mut self, opcode: u8) -> fn(&mut Cpu, &mut Ram) {
+    fn run_instruction(&mut self, opcode: u8, mem: &mut Ram) {
         match opcode {
-            0xEA => instr!(nop - imp),
-            0x1A => instr!(nop - imp),
-            0x3A => instr!(nop - imp),
-            0x5A => instr!(nop - imp),
-            0x7A => instr!(nop - imp),
-            0xDA => instr!(nop - imp),
-            0xFA => instr!(nop - imp),
-            0x80 => instr!(nop_addr - imm),
-            0x82 => instr!(nop_addr - imm),
-            0x89 => instr!(nop_addr - imm),
-            0xC2 => instr!(nop_addr - imm),
-            0xE2 => instr!(nop_addr - imm),
-            0x04 => instr!(nop_addr - zp),
-            0x44 => instr!(nop_addr - zp),
-            0x64 => instr!(nop_addr - zp),
-            0x14 => instr!(nop_addr - zpx),
-            0x34 => instr!(nop_addr - zpx),
-            0x54 => instr!(nop_addr - zpx),
-            0x74 => instr!(nop_addr - zpx),
-            0xD4 => instr!(nop_addr - zpx),
-            0xF4 => instr!(nop_addr - zpx),
-            0x0C => instr!(nop_addr - abs),
-            0x1C => instr!(nop_addr - abx),
-            0x3C => instr!(nop_addr - abx),
-            0x5C => instr!(nop_addr - abx),
-            0x7C => instr!(nop_addr - abx),
-            0xDC => instr!(nop_addr - abx),
-            0xFC => instr!(nop_addr - abx),
+            0xEA => Nop::run_with(AddressingMode::Implicit, self, mem),
+            0x1A => Nop::run_with(AddressingMode::Implicit, self, mem),
+            0x3A => Nop::run_with(AddressingMode::Implicit, self, mem),
+            0x5A => Nop::run_with(AddressingMode::Implicit, self, mem),
+            0x7A => Nop::run_with(AddressingMode::Implicit, self, mem),
+            0xDA => Nop::run_with(AddressingMode::Implicit, self, mem),
+            0xFA => Nop::run_with(AddressingMode::Implicit, self, mem),
+            0x80 => Nop::run_with(AddressingMode::Immediate, self, mem),
+            0x82 => Nop::run_with(AddressingMode::Immediate, self, mem),
+            0x89 => Nop::run_with(AddressingMode::Immediate, self, mem),
+            0xC2 => Nop::run_with(AddressingMode::Immediate, self, mem),
+            0xE2 => Nop::run_with(AddressingMode::Immediate, self, mem),
+            0x04 => Nop::run_with(AddressingMode::ZeroPage, self, mem),
+            0x44 => Nop::run_with(AddressingMode::ZeroPage, self, mem),
+            0x64 => Nop::run_with(AddressingMode::ZeroPage, self, mem),
+            0x14 => Nop::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x34 => Nop::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x54 => Nop::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x74 => Nop::run_with(AddressingMode::ZeroPageX, self, mem),
+            0xD4 => Nop::run_with(AddressingMode::ZeroPageX, self, mem),
+            0xF4 => Nop::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x0C => Nop::run_with(AddressingMode::Absolute, self, mem),
+            0x1C => Nop::run_with(AddressingMode::AbsoluteX, self, mem),
+            0x3C => Nop::run_with(AddressingMode::AbsoluteX, self, mem),
+            0x5C => Nop::run_with(AddressingMode::AbsoluteX, self, mem),
+            0x7C => Nop::run_with(AddressingMode::AbsoluteX, self, mem),
+            0xDC => Nop::run_with(AddressingMode::AbsoluteX, self, mem),
+            0xFC => Nop::run_with(AddressingMode::AbsoluteX, self, mem),
 
-            0xA9 => instr!(lda - imm),
-            0xA5 => instr!(lda - zp),
-            0xB5 => instr!(lda - zpx),
-            0xAD => instr!(lda - abs),
-            0xBD => instr!(lda - abx),
-            0xB9 => instr!(lda - aby),
-            0xA1 => instr!(lda - inx),
-            0xB1 => instr!(lda - iny),
+            0xA9 => Lda::run_with(AddressingMode::Immediate, self, mem),
+            0xA5 => Lda::run_with(AddressingMode::ZeroPage, self, mem),
+            0xB5 => Lda::run_with(AddressingMode::ZeroPageX, self, mem),
+            0xAD => Lda::run_with(AddressingMode::Absolute, self, mem),
+            0xBD => Lda::run_with(AddressingMode::AbsoluteX, self, mem),
+            0xB9 => Lda::run_with(AddressingMode::AbsoluteY, self, mem),
+            0xA1 => Lda::run_with(AddressingMode::IndirectIndexed, self, mem),
+            0xB1 => Lda::run_with(AddressingMode::IndexedIndirect, self, mem),
 
-            0xA2 => instr!(ldx - imm),
-            0xA6 => instr!(ldx - zp),
-            0xB6 => instr!(ldx - zpy),
-            0xAE => instr!(ldx - abs),
-            0xBE => instr!(ldx - aby),
+            0xA2 => Ldx::run_with(AddressingMode::Immediate, self, mem),
+            0xA6 => Ldx::run_with(AddressingMode::ZeroPage, self, mem),
+            0xB6 => Ldx::run_with(AddressingMode::ZeroPageY, self, mem),
+            0xAE => Ldx::run_with(AddressingMode::Absolute, self, mem),
+            0xBE => Ldx::run_with(AddressingMode::AbsoluteY, self, mem),
 
-            0xA0 => instr!(ldy - imm),
-            0xA4 => instr!(ldy - zp),
-            0xB4 => instr!(ldy - zpx),
-            0xAC => instr!(ldy - abs),
-            0xBC => instr!(ldy - abx),
+            0xA0 => Ldy::run_with(AddressingMode::Immediate, self, mem),
+            0xA4 => Ldy::run_with(AddressingMode::ZeroPage, self, mem),
+            0xB4 => Ldy::run_with(AddressingMode::ZeroPageX, self, mem),
+            0xAC => Ldy::run_with(AddressingMode::Absolute, self, mem),
+            0xBC => Ldy::run_with(AddressingMode::AbsoluteX, self, mem),
 
-            0xA7 => instr!(lax - zp),
-            0xB7 => instr!(lax - zpy),
-            0xAF => instr!(lax - abs),
-            0xBF => instr!(lax - aby),
-            0xA3 => instr!(lax - inx),
-            0xB3 => instr!(lax - iny),
+            0xA7 => Lax::run_with(AddressingMode::ZeroPage, self, mem),
+            0xB7 => Lax::run_with(AddressingMode::ZeroPageY, self, mem),
+            0xAF => Lax::run_with(AddressingMode::Absolute, self, mem),
+            0xBF => Lax::run_with(AddressingMode::AbsoluteY, self, mem),
+            0xA3 => Lax::run_with(AddressingMode::IndirectIndexed, self, mem),
+            0xB3 => Lax::run_with(AddressingMode::IndexedIndirect, self, mem),
 
-            0x85 => instr!(sta - zp),
-            0x95 => instr!(sta - zpx),
-            0x8D => instr!(sta - abs),
-            0x9D => instr!(sta - abx),
-            0x99 => instr!(sta - aby),
-            0x81 => instr!(sta - inx),
-            0x91 => instr!(sta - iny),
+            0x85 => Sta::run_with(AddressingMode::ZeroPage, self, mem),
+            0x95 => Sta::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x8D => Sta::run_with(AddressingMode::Absolute, self, mem),
+            0x9D => Sta::run_with(AddressingMode::AbsoluteX, self, mem),
+            0x99 => Sta::run_with(AddressingMode::AbsoluteY, self, mem),
+            0x81 => Sta::run_with(AddressingMode::IndirectIndexed, self, mem),
+            0x91 => Sta::run_with(AddressingMode::IndexedIndirect, self, mem),
 
-            0x86 => instr!(stx - zp),
-            0x96 => instr!(stx - zpy),
-            0x8E => instr!(stx - abs),
+            0x86 => Stx::run_with(AddressingMode::ZeroPage, self, mem),
+            0x96 => Stx::run_with(AddressingMode::ZeroPageY, self, mem),
+            0x8E => Stx::run_with(AddressingMode::Absolute, self, mem),
 
-            0x84 => instr!(sty - zp),
-            0x94 => instr!(sty - zpx),
-            0x8C => instr!(sty - abs),
+            0x84 => Sty::run_with(AddressingMode::ZeroPage, self, mem),
+            0x94 => Sty::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x8C => Sty::run_with(AddressingMode::Absolute, self, mem),
 
-            0x87 => instr!(sax - zp),
-            0x97 => instr!(sax - zpy),
-            0x8F => instr!(sax - abs),
-            0x83 => instr!(sax - inx),
+            0x87 => Sax::run_with(AddressingMode::ZeroPage, self, mem),
+            0x97 => Sax::run_with(AddressingMode::ZeroPageY, self, mem),
+            0x8F => Sax::run_with(AddressingMode::Absolute, self, mem),
+            0x83 => Sax::run_with(AddressingMode::IndirectIndexed, self, mem),
 
-            0xAA => instr!(tax - imp),
+            0xAA => Tax::run_with(AddressingMode::Implicit, self, mem),
 
-            0xA8 => instr!(tay - imp),
+            0xA8 => Tay::run_with(AddressingMode::Implicit, self, mem),
 
-            0x8A => instr!(txa - imp),
+            0x8A => Txa::run_with(AddressingMode::Implicit, self, mem),
 
-            0x98 => instr!(tya - imp),
+            0x98 => Tya::run_with(AddressingMode::Implicit, self, mem),
 
-            0xBA => instr!(tsx - imp),
+            0xBA => Tsx::run_with(AddressingMode::Implicit, self, mem),
 
-            0x9A => instr!(txs - imp),
+            0x9A => Txs::run_with(AddressingMode::Implicit, self, mem),
 
-            0x48 => instr!(pha - imp),
+            0x48 => Pha::run_with(AddressingMode::Implicit, self, mem),
 
-            0x08 => instr!(php - imp),
+            0x08 => Php::run_with(AddressingMode::Implicit, self, mem),
 
-            0x68 => instr!(pla - imp),
+            0x68 => Pla::run_with(AddressingMode::Implicit, self, mem),
 
-            0x28 => instr!(plp - imp),
+            0x28 => Plp::run_with(AddressingMode::Implicit, self, mem),
 
-            0x29 => instr!(and - imm),
-            0x25 => instr!(and - zp),
-            0x35 => instr!(and - zpx),
-            0x2D => instr!(and - abs),
-            0x3D => instr!(and - abx),
-            0x39 => instr!(and - aby),
-            0x21 => instr!(and - inx),
-            0x31 => instr!(and - iny),
+            0x29 => And::run_with(AddressingMode::Immediate, self, mem),
+            0x25 => And::run_with(AddressingMode::ZeroPage, self, mem),
+            0x35 => And::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x2D => And::run_with(AddressingMode::Absolute, self, mem),
+            0x3D => And::run_with(AddressingMode::AbsoluteX, self, mem),
+            0x39 => And::run_with(AddressingMode::AbsoluteY, self, mem),
+            0x21 => And::run_with(AddressingMode::IndirectIndexed, self, mem),
+            0x31 => And::run_with(AddressingMode::IndexedIndirect, self, mem),
 
-            0x49 => instr!(eor - imm),
-            0x45 => instr!(eor - zp),
-            0x55 => instr!(eor - zpx),
-            0x4D => instr!(eor - abs),
-            0x5D => instr!(eor - abx),
-            0x59 => instr!(eor - aby),
-            0x41 => instr!(eor - inx),
-            0x51 => instr!(eor - iny),
+            0x49 => Eor::run_with(AddressingMode::Immediate, self, mem),
+            0x45 => Eor::run_with(AddressingMode::ZeroPage, self, mem),
+            0x55 => Eor::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x4D => Eor::run_with(AddressingMode::Absolute, self, mem),
+            0x5D => Eor::run_with(AddressingMode::AbsoluteX, self, mem),
+            0x59 => Eor::run_with(AddressingMode::AbsoluteY, self, mem),
+            0x41 => Eor::run_with(AddressingMode::IndirectIndexed, self, mem),
+            0x51 => Eor::run_with(AddressingMode::IndexedIndirect, self, mem),
 
-            0x09 => instr!(ora - imm),
-            0x05 => instr!(ora - zp),
-            0x15 => instr!(ora - zpx),
-            0x0D => instr!(ora - abs),
-            0x1D => instr!(ora - abx),
-            0x19 => instr!(ora - aby),
-            0x01 => instr!(ora - inx),
-            0x11 => instr!(ora - iny),
+            0x09 => Ora::run_with(AddressingMode::Immediate, self, mem),
+            0x05 => Ora::run_with(AddressingMode::ZeroPage, self, mem),
+            0x15 => Ora::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x0D => Ora::run_with(AddressingMode::Absolute, self, mem),
+            0x1D => Ora::run_with(AddressingMode::AbsoluteX, self, mem),
+            0x19 => Ora::run_with(AddressingMode::AbsoluteY, self, mem),
+            0x01 => Ora::run_with(AddressingMode::IndirectIndexed, self, mem),
+            0x11 => Ora::run_with(AddressingMode::IndexedIndirect, self, mem),
 
-            0x24 => instr!(bit - zp),
-            0x2C => instr!(bit - abs),
+            0x24 => Bit::run_with(AddressingMode::ZeroPage, self, mem),
+            0x2C => Bit::run_with(AddressingMode::Absolute, self, mem),
 
-            0x4C => instr!(jmp - abs),
-            0x6C => instr!(jmp - ind),
+            0x4C => Jmp::run_with(AddressingMode::Absolute, self, mem),
+            0x6C => Jmp::run_with(AddressingMode::Indirect, self, mem),
 
-            0x20 => instr!(jsr - abs),
+            0x20 => Jsr::run_with(AddressingMode::Absolute, self, mem),
 
-            0x60 => instr!(rts - imp),
+            0x60 => Rts::run_with(AddressingMode::Implicit, self, mem),
 
-            0xD0 => instr!(bne - zp),
-            0xF0 => instr!(beq - zp),
-            0x10 => instr!(bpl - zp),
-            0x90 => instr!(bcc - zp),
-            0xB0 => instr!(bcs - zp),
-            0x30 => instr!(bmi - zp),
-            0x50 => instr!(bvc - zp),
-            0x70 => instr!(bvs - zp),
+            0xD0 => Bne::run_with(AddressingMode::Relative, self, mem),
+            0xF0 => Beq::run_with(AddressingMode::Relative, self, mem),
+            0x10 => Bpl::run_with(AddressingMode::Relative, self, mem),
+            0x90 => Bcc::run_with(AddressingMode::Relative, self, mem),
+            0xB0 => Bcs::run_with(AddressingMode::Relative, self, mem),
+            0x30 => Bmi::run_with(AddressingMode::Relative, self, mem),
+            0x50 => Bvc::run_with(AddressingMode::Relative, self, mem),
+            0x70 => Bvs::run_with(AddressingMode::Relative, self, mem),
 
-            0xCA => instr!(dex - imp),
-            0x88 => instr!(dey - imp),
+            0xCA => Dex::run_with(AddressingMode::Implicit, self, mem),
+            0x88 => Dey::run_with(AddressingMode::Implicit, self, mem),
 
-            0xE8 => instr!(incx - imp),
-            0xC8 => instr!(incy - imp),
+            0xE8 => Incx::run_with(AddressingMode::Implicit, self, mem),
+            0xC8 => Incy::run_with(AddressingMode::Implicit, self, mem),
 
-            0x0A => instr!(asl - imp),
-            0x06 => instr!(asl_addr - zp),
-            0x16 => instr!(asl_addr - zpx),
-            0x0E => instr!(asl_addr - abs),
-            0x1E => instr!(asl_addr - abx),
+            0x0A => Asl::run_with(AddressingMode::Accumulator, self, mem),
+            0x06 => AslAddr::run_with(AddressingMode::ZeroPage, self, mem),
+            0x16 => AslAddr::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x0E => AslAddr::run_with(AddressingMode::Absolute, self, mem),
+            0x1E => AslAddr::run_with(AddressingMode::AbsoluteX, self, mem),
 
-            0x07 => instr!(slo - zp),
-            0x17 => instr!(slo - zpx),
-            0x0F => instr!(slo - abs),
-            0x1F => instr!(slo - abx),
-            0x1B => instr!(slo - aby),
-            0x03 => instr!(slo - inx),
-            0x13 => instr!(slo - iny),
+            0x07 => Slo::run_with(AddressingMode::ZeroPage, self, mem),
+            0x17 => Slo::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x0F => Slo::run_with(AddressingMode::Absolute, self, mem),
+            0x1F => Slo::run_with(AddressingMode::AbsoluteX, self, mem),
+            0x1B => Slo::run_with(AddressingMode::AbsoluteY, self, mem),
+            0x03 => Slo::run_with(AddressingMode::IndirectIndexed, self, mem),
+            0x13 => Slo::run_with(AddressingMode::IndexedIndirect, self, mem),
 
-            0x4A => instr!(lsr - imp),
-            0x46 => instr!(lsr_addr - zp),
-            0x56 => instr!(lsr_addr - zpx),
-            0x4E => instr!(lsr_addr - abs),
-            0x5E => instr!(lsr_addr - abx),
+            0x4A => Lsr::run_with(AddressingMode::Accumulator, self, mem),
+            0x46 => LsrAddr::run_with(AddressingMode::ZeroPage, self, mem),
+            0x56 => LsrAddr::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x4E => LsrAddr::run_with(AddressingMode::Absolute, self, mem),
+            0x5E => LsrAddr::run_with(AddressingMode::AbsoluteX, self, mem),
 
-            0x47 => instr!(sre - zp),
-            0x57 => instr!(sre - zpx),
-            0x4F => instr!(sre - abs),
-            0x5F => instr!(sre - abx),
-            0x5B => instr!(sre - aby),
-            0x43 => instr!(sre - inx),
-            0x53 => instr!(sre - iny),
+            0x47 => Sre::run_with(AddressingMode::ZeroPage, self, mem),
+            0x57 => Sre::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x4F => Sre::run_with(AddressingMode::Absolute, self, mem),
+            0x5F => Sre::run_with(AddressingMode::AbsoluteX, self, mem),
+            0x5B => Sre::run_with(AddressingMode::AbsoluteY, self, mem),
+            0x43 => Sre::run_with(AddressingMode::IndirectIndexed, self, mem),
+            0x53 => Sre::run_with(AddressingMode::IndexedIndirect, self, mem),
 
-            0x2A => instr!(rol - imp),
-            0x26 => instr!(rol_addr - zp),
-            0x36 => instr!(rol_addr - zpx),
-            0x2E => instr!(rol_addr - abs),
-            0x3E => instr!(rol_addr - abx),
+            0x2A => Rol::run_with(AddressingMode::Accumulator, self, mem),
+            0x26 => RolAddr::run_with(AddressingMode::ZeroPage, self, mem),
+            0x36 => RolAddr::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x2E => RolAddr::run_with(AddressingMode::Absolute, self, mem),
+            0x3E => RolAddr::run_with(AddressingMode::AbsoluteX, self, mem),
 
-            0x27 => instr!(rla - zp),
-            0x37 => instr!(rla - zpx),
-            0x2F => instr!(rla - abs),
-            0x3F => instr!(rla - abx),
-            0x3B => instr!(rla - aby),
-            0x23 => instr!(rla - inx),
-            0x33 => instr!(rla - iny),
+            0x27 => Rla::run_with(AddressingMode::ZeroPage, self, mem),
+            0x37 => Rla::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x2F => Rla::run_with(AddressingMode::Absolute, self, mem),
+            0x3F => Rla::run_with(AddressingMode::AbsoluteX, self, mem),
+            0x3B => Rla::run_with(AddressingMode::AbsoluteY, self, mem),
+            0x23 => Rla::run_with(AddressingMode::IndirectIndexed, self, mem),
+            0x33 => Rla::run_with(AddressingMode::IndexedIndirect, self, mem),
 
-            0x6A => instr!(ror - imp),
-            0x66 => instr!(ror_addr - zp),
-            0x76 => instr!(ror_addr - zpx),
-            0x6E => instr!(ror_addr - abs),
-            0x7E => instr!(ror_addr - abx),
+            0x6A => Ror::run_with(AddressingMode::Accumulator, self, mem),
+            0x66 => RorAddr::run_with(AddressingMode::ZeroPage, self, mem),
+            0x76 => RorAddr::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x6E => RorAddr::run_with(AddressingMode::Absolute, self, mem),
+            0x7E => RorAddr::run_with(AddressingMode::AbsoluteX, self, mem),
 
-            0x67 => instr!(rra - zp),
-            0x77 => instr!(rra - zpx),
-            0x6F => instr!(rra - abs),
-            0x7F => instr!(rra - abx),
-            0x7B => instr!(rra - aby),
-            0x63 => instr!(rra - inx),
-            0x73 => instr!(rra - iny),
+            0x67 => Rra::run_with(AddressingMode::ZeroPage, self, mem),
+            0x77 => Rra::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x6F => Rra::run_with(AddressingMode::Absolute, self, mem),
+            0x7F => Rra::run_with(AddressingMode::AbsoluteX, self, mem),
+            0x7B => Rra::run_with(AddressingMode::AbsoluteY, self, mem),
+            0x63 => Rra::run_with(AddressingMode::IndirectIndexed, self, mem),
+            0x73 => Rra::run_with(AddressingMode::IndexedIndirect, self, mem),
 
-            0x18 => instr!(clc - imp),
-            0x38 => instr!(sec - imp),
+            0x18 => Clc::run_with(AddressingMode::Implicit, self, mem),
+            0x38 => Sec::run_with(AddressingMode::Implicit, self, mem),
 
-            0xD8 => instr!(cld - imp),
-            0xF8 => instr!(sed - imp),
+            0xD8 => Cld::run_with(AddressingMode::Implicit, self, mem),
+            0xF8 => Sed::run_with(AddressingMode::Implicit, self, mem),
 
-            0x58 => instr!(cli - imp),
-            0x78 => instr!(sei - imp),
+            0x58 => Cli::run_with(AddressingMode::Implicit, self, mem),
+            0x78 => Sei::run_with(AddressingMode::Implicit, self, mem),
 
-            0xB8 => instr!(clv - imp),
+            0xB8 => Clv::run_with(AddressingMode::Implicit, self, mem),
 
-            0xC9 => instr!(cmp - imm),
-            0xC5 => instr!(cmp - zp),
-            0xD5 => instr!(cmp - zpx),
-            0xCD => instr!(cmp - abs),
-            0xDD => instr!(cmp - abx),
-            0xD9 => instr!(cmp - aby),
-            0xC1 => instr!(cmp - inx),
-            0xD1 => instr!(cmp - iny),
+            0xC9 => Cmp::run_with(AddressingMode::Immediate, self, mem),
+            0xC5 => Cmp::run_with(AddressingMode::ZeroPage, self, mem),
+            0xD5 => Cmp::run_with(AddressingMode::ZeroPageX, self, mem),
+            0xCD => Cmp::run_with(AddressingMode::Absolute, self, mem),
+            0xDD => Cmp::run_with(AddressingMode::AbsoluteX, self, mem),
+            0xD9 => Cmp::run_with(AddressingMode::AbsoluteY, self, mem),
+            0xC1 => Cmp::run_with(AddressingMode::IndirectIndexed, self, mem),
+            0xD1 => Cmp::run_with(AddressingMode::IndexedIndirect, self, mem),
 
-            0xE0 => instr!(cpx - imm),
-            0xE4 => instr!(cpx - zp),
-            0xEC => instr!(cpx - abs),
+            0xE0 => Cpx::run_with(AddressingMode::Immediate, self, mem),
+            0xE4 => Cpx::run_with(AddressingMode::ZeroPage, self, mem),
+            0xEC => Cpx::run_with(AddressingMode::Absolute, self, mem),
 
-            0xC0 => instr!(cpy - imm),
-            0xC4 => instr!(cpy - zp),
-            0xCC => instr!(cpy - abs),
+            0xC0 => Cpy::run_with(AddressingMode::Immediate, self, mem),
+            0xC4 => Cpy::run_with(AddressingMode::ZeroPage, self, mem),
+            0xCC => Cpy::run_with(AddressingMode::Absolute, self, mem),
 
-            0x69 => instr!(adc - imm),
-            0x65 => instr!(adc - zp),
-            0x75 => instr!(adc - zpx),
-            0x6D => instr!(adc - abs),
-            0x7D => instr!(adc - abx),
-            0x79 => instr!(adc - aby),
-            0x61 => instr!(adc - inx),
-            0x71 => instr!(adc - iny),
+            0x69 => Adc::run_with(AddressingMode::Immediate, self, mem),
+            0x65 => Adc::run_with(AddressingMode::ZeroPage, self, mem),
+            0x75 => Adc::run_with(AddressingMode::ZeroPageX, self, mem),
+            0x6D => Adc::run_with(AddressingMode::Absolute, self, mem),
+            0x7D => Adc::run_with(AddressingMode::AbsoluteX, self, mem),
+            0x79 => Adc::run_with(AddressingMode::AbsoluteY, self, mem),
+            0x61 => Adc::run_with(AddressingMode::IndirectIndexed, self, mem),
+            0x71 => Adc::run_with(AddressingMode::IndexedIndirect, self, mem),
 
-            0xE9 => instr!(sbc - imm),
-            0xEB => instr!(sbc - imm),
-            0xE5 => instr!(sbc - zp),
-            0xF5 => instr!(sbc - zpx),
-            0xED => instr!(sbc - abs),
-            0xFD => instr!(sbc - abx),
-            0xF9 => instr!(sbc - aby),
-            0xE1 => instr!(sbc - inx),
-            0xF1 => instr!(sbc - iny),
+            0xE9 => Sbc::run_with(AddressingMode::Immediate, self, mem),
+            0xEB => Sbc::run_with(AddressingMode::Immediate, self, mem),
+            0xE5 => Sbc::run_with(AddressingMode::ZeroPage, self, mem),
+            0xF5 => Sbc::run_with(AddressingMode::ZeroPageX, self, mem),
+            0xED => Sbc::run_with(AddressingMode::Absolute, self, mem),
+            0xFD => Sbc::run_with(AddressingMode::AbsoluteX, self, mem),
+            0xF9 => Sbc::run_with(AddressingMode::AbsoluteY, self, mem),
+            0xE1 => Sbc::run_with(AddressingMode::IndirectIndexed, self, mem),
+            0xF1 => Sbc::run_with(AddressingMode::IndexedIndirect, self, mem),
 
-            0x00 => instr!(brk - imp),
+            0x00 => Brk::run_with(AddressingMode::Implicit, self, mem),
 
-            0x40 => instr!(rti - imp),
+            0x40 => Rti::run_with(AddressingMode::Implicit, self, mem),
 
-            0xE6 => instr!(inc - zp),
-            0xF6 => instr!(inc - zpx),
-            0xEE => instr!(inc - abs),
-            0xFE => instr!(inc - abx),
+            0xE6 => Inc::run_with(AddressingMode::ZeroPage, self, mem),
+            0xF6 => Inc::run_with(AddressingMode::ZeroPageX, self, mem),
+            0xEE => Inc::run_with(AddressingMode::Absolute, self, mem),
+            0xFE => Inc::run_with(AddressingMode::AbsoluteX, self, mem),
 
-            0xE7 => instr!(isc - zp),
-            0xF7 => instr!(isc - zpx),
-            0xEF => instr!(isc - abs),
-            0xFF => instr!(isc - abx),
-            0xFB => instr!(isc - aby),
-            0xE3 => instr!(isc - inx),
-            0xF3 => instr!(isc - iny),
+            0xE7 => Isc::run_with(AddressingMode::ZeroPage, self, mem),
+            0xF7 => Isc::run_with(AddressingMode::ZeroPageX, self, mem),
+            0xEF => Isc::run_with(AddressingMode::Absolute, self, mem),
+            0xFF => Isc::run_with(AddressingMode::AbsoluteX, self, mem),
+            0xFB => Isc::run_with(AddressingMode::AbsoluteY, self, mem),
+            0xE3 => Isc::run_with(AddressingMode::IndirectIndexed, self, mem),
+            0xF3 => Isc::run_with(AddressingMode::IndexedIndirect, self, mem),
 
-            0xC6 => instr!(dec - zp),
-            0xD6 => instr!(dec - zpx),
-            0xCE => instr!(dec - abs),
-            0xDE => instr!(dec - abx),
+            0xC6 => Dec::run_with(AddressingMode::ZeroPage, self, mem),
+            0xD6 => Dec::run_with(AddressingMode::ZeroPageX, self, mem),
+            0xCE => Dec::run_with(AddressingMode::Absolute, self, mem),
+            0xDE => Dec::run_with(AddressingMode::AbsoluteX, self, mem),
 
-            0xC7 => instr!(dcp - zp),
-            0xD7 => instr!(dcp - zpx),
-            0xCF => instr!(dcp - abs),
-            0xDF => instr!(dcp - abx),
-            0xDB => instr!(dcp - aby),
-            0xC3 => instr!(dcp - inx),
-            0xD3 => instr!(dcp - iny),
+            0xC7 => Dcp::run_with(AddressingMode::ZeroPage, self, mem),
+            0xD7 => Dcp::run_with(AddressingMode::ZeroPageX, self, mem),
+            0xCF => Dcp::run_with(AddressingMode::Absolute, self, mem),
+            0xDF => Dcp::run_with(AddressingMode::AbsoluteX, self, mem),
+            0xDB => Dcp::run_with(AddressingMode::AbsoluteY, self, mem),
+            0xC3 => Dcp::run_with(AddressingMode::IndirectIndexed, self, mem),
+            0xD3 => Dcp::run_with(AddressingMode::IndexedIndirect, self, mem),
 
             _ => unimplemented!("{:#04X} opcode not implemented yet!\n", opcode),
         }
@@ -455,134 +1006,6 @@ impl Cpu {
         return addr;
     }
 
-    fn nop(&mut self, _: &mut Ram) {
-        self.pc += 1;
-    }
-
-    fn nop_addr(&mut self, _: u16, _: &mut Ram) {
-        self.pc += 1;
-    }
-
-    fn lda(&mut self, addr: u16, ram: &mut Ram) {
-        self.a = ram.read(addr);
-
-        self.zero_flag = self.a == 0;
-
-        self.negative_flag = self.a & NEGATIVE_MASK != 0;
-
-        self.pc += 1;
-    }
-
-    fn ldx(&mut self, addr: u16, ram: &mut Ram) {
-        self.x = ram.read(addr);
-
-        self.zero_flag = self.x == 0;
-        self.negative_flag = self.x & NEGATIVE_MASK != 0;
-
-        self.pc += 1;
-    }
-
-    fn ldy(&mut self, addr: u16, ram: &mut Ram) {
-        self.y = ram.read(addr);
-
-        self.zero_flag = self.y == 0;
-        self.negative_flag = self.y & NEGATIVE_MASK != 0;
-
-        self.pc += 1;
-    }
-
-    fn lax(&mut self, addr: u16, ram: &mut Ram) {
-        let value = ram.read(addr);
-        self.x = value;
-        self.a = value;
-
-        self.zero_flag = self.a == 0;
-        self.negative_flag = self.a & NEGATIVE_MASK != 0;
-
-        self.pc += 1;
-    }
-
-    fn sta(&mut self, addr: u16, ram: &mut Ram) {
-        ram.write(addr, self.a);
-
-        self.pc += 1;
-    }
-
-    fn stx(&mut self, addr: u16, ram: &mut Ram) {
-        ram.write(addr, self.x);
-
-        self.pc += 1;
-    }
-
-    fn sty(&mut self, addr: u16, ram: &mut Ram) {
-        ram.write(addr, self.y);
-
-        self.pc += 1;
-    }
-
-    fn sax(&mut self, addr: u16, ram: &mut Ram) {
-        ram.write(addr, self.a & self.x);
-
-        self.pc += 1;
-    }
-
-    fn tax(&mut self, _: &mut Ram) {
-        self.x = self.a;
-
-        self.zero_flag = self.x == 0;
-        self.negative_flag = self.x & NEGATIVE_MASK != 0;
-
-        self.pc += 1;
-    }
-
-    fn tay(&mut self, _: &mut Ram) {
-        self.y = self.a;
-
-        self.zero_flag = self.y == 0;
-        self.negative_flag = self.y & NEGATIVE_MASK != 0;
-
-        self.pc += 1;
-    }
-
-    fn txa(&mut self, _: &mut Ram) {
-        self.a = self.x;
-
-        self.zero_flag = self.a == 0;
-        self.negative_flag = self.a & NEGATIVE_MASK != 0;
-
-        self.pc += 1;
-    }
-
-    fn tya(&mut self, _: &mut Ram) {
-        self.a = self.y;
-
-        self.zero_flag = self.a == 0;
-        self.negative_flag = self.a & NEGATIVE_MASK != 0;
-
-        self.pc += 1;
-    }
-
-    fn tsx(&mut self, _: &mut Ram) {
-        self.x = self.sp;
-
-        self.zero_flag = self.x == 0;
-        self.negative_flag = self.x & NEGATIVE_MASK != 0;
-
-        self.pc += 1;
-    }
-
-    fn txs(&mut self, _: &mut Ram) {
-        self.sp = self.x;
-
-        self.pc += 1;
-    }
-
-    fn pha(&mut self, ram: &mut Ram) {
-        self.push(self.a, ram);
-
-        self.pc += 1;
-    }
-
     fn status_to_word(&self) -> u8 {
         let mut status = 0;
 
@@ -598,25 +1021,6 @@ impl Cpu {
         return status;
     }
 
-    fn php(&mut self, ram: &mut Ram) {
-        // TODO: Find if this is realy correct
-        self.reserved_flag = true;
-        self.break_cmd_flag = true;
-
-        self.push(self.status_to_word(), ram);
-
-        self.pc += 1;
-    }
-
-    fn pla(&mut self, ram: &mut Ram) {
-        self.a = self.pop(ram);
-
-        self.zero_flag = self.a == 0;
-        self.negative_flag = self.a & NEGATIVE_MASK != 0;
-
-        self.pc += 1;
-    }
-
     fn word_to_status(&mut self, word: u8) {
         self.carry_flag = ((word >> 0) & 1) != 0;
         self.zero_flag = ((word >> 1) & 1) != 0;
@@ -626,164 +1030,6 @@ impl Cpu {
         self.reserved_flag = ((word >> 5) & 1) != 0;
         self.overflow_flag = ((word >> 6) & 1) != 0;
         self.negative_flag = ((word >> 7) & 1) != 0;
-    }
-
-    fn plp(&mut self, ram: &mut Ram) {
-        let status = self.pop(ram);
-        self.word_to_status(status);
-
-        self.pc += 1;
-    }
-
-    fn and(&mut self, addr: u16, ram: &mut Ram) {
-        self.a &= ram.read(addr);
-
-        self.zero_flag = self.a == 0;
-        self.negative_flag = self.a & NEGATIVE_MASK != 0;
-
-        self.pc += 1;
-    }
-
-    fn eor(&mut self, addr: u16, ram: &mut Ram) {
-        self.a ^= ram.read(addr);
-
-        self.zero_flag = self.a == 0;
-        self.negative_flag = self.a & NEGATIVE_MASK != 0;
-
-        self.pc += 1;
-    }
-
-    fn ora(&mut self, addr: u16, ram: &mut Ram) {
-        self.a |= ram.read(addr);
-
-        self.zero_flag = self.a == 0;
-        self.negative_flag = self.a & NEGATIVE_MASK != 0;
-
-        self.pc += 1;
-    }
-
-    fn bit(&mut self, addr: u16, ram: &mut Ram) {
-        let value = ram.read(addr);
-
-        self.zero_flag = self.a & value == 0;
-        self.overflow_flag = value & 1 << 6 != 0;
-        self.negative_flag = value & NEGATIVE_MASK != 0;
-
-        self.pc += 1;
-    }
-
-    fn jmp(&mut self, addr: u16, _: &mut Ram) {
-        self.pc = addr;
-    }
-
-    fn jsr(&mut self, addr: u16, ram: &mut Ram) {
-        self.push_long(self.pc, ram);
-        self.pc = addr;
-    }
-
-    fn rts(&mut self, ram: &mut Ram) {
-        let addr = self.pop_long(ram);
-        self.pc = addr.wrapping_add(1);
-    }
-
-    fn bne(&mut self, addr: u16, _: &mut Ram) {
-        if !self.zero_flag {
-            self.pc = self.pc.wrapping_add_signed((addr as i8) as i16);
-        }
-
-        self.pc += 1;
-    }
-
-    fn beq(&mut self, addr: u16, _: &mut Ram) {
-        if self.zero_flag {
-            self.pc = self.pc.wrapping_add_signed((addr as i8) as i16);
-        }
-
-        self.pc += 1;
-    }
-
-    fn bpl(&mut self, addr: u16, _: &mut Ram) {
-        if !self.negative_flag {
-            self.pc = self.pc.wrapping_add_signed((addr as i8) as i16);
-        }
-
-        self.pc += 1;
-    }
-
-    fn bcc(&mut self, addr: u16, _: &mut Ram) {
-        if !self.carry_flag {
-            self.pc = self.pc.wrapping_add_signed((addr as i8) as i16);
-        }
-
-        self.pc += 1;
-    }
-
-    fn bcs(&mut self, addr: u16, _: &mut Ram) {
-        if self.carry_flag {
-            self.pc = self.pc.wrapping_add_signed((addr as i8) as i16);
-        }
-
-        self.pc += 1;
-    }
-
-    fn bmi(&mut self, addr: u16, _: &mut Ram) {
-        if self.negative_flag {
-            self.pc = self.pc.wrapping_add_signed((addr as i8) as i16);
-        }
-
-        self.pc += 1;
-    }
-
-    fn bvc(&mut self, addr: u16, _: &mut Ram) {
-        if !self.overflow_flag {
-            self.pc = self.pc.wrapping_add_signed((addr as i8) as i16);
-        }
-
-        self.pc += 1;
-    }
-
-    fn bvs(&mut self, addr: u16, _: &mut Ram) {
-        if self.overflow_flag {
-            self.pc = self.pc.wrapping_add_signed((addr as i8) as i16);
-        }
-
-        self.pc += 1;
-    }
-
-    fn dex(&mut self, _: &mut Ram) {
-        self.x = self.x.wrapping_sub(1);
-
-        self.zero_flag = self.x == 0;
-        self.negative_flag = (self.x >> 7) & 1 == 1;
-
-        self.pc += 1;
-    }
-
-    fn dey(&mut self, _: &mut Ram) {
-        self.y = self.y.wrapping_sub(1);
-
-        self.zero_flag = self.y == 0;
-        self.negative_flag = (self.y >> 7) & 1 == 1;
-
-        self.pc += 1;
-    }
-
-    fn incx(&mut self, _: &mut Ram) {
-        self.x = self.x.wrapping_add(1);
-
-        self.zero_flag = self.x == 0;
-        self.negative_flag = (self.x >> 7) & 1 == 1;
-
-        self.pc += 1;
-    }
-
-    fn incy(&mut self, _: &mut Ram) {
-        self.y = self.y.wrapping_add(1);
-
-        self.zero_flag = self.y == 0;
-        self.negative_flag = (self.y >> 7) & 1 == 1;
-
-        self.pc += 1;
     }
 
     fn shift_left(&mut self, mut value: u8) -> u8 {
@@ -796,22 +1042,6 @@ impl Cpu {
         return value;
     }
 
-    fn asl(&mut self, _: &mut Ram) {
-        self.a = self.shift_left(self.a);
-    }
-
-    fn asl_addr(&mut self, addr: u16, ram: &mut Ram) {
-        let mut value = ram.read(addr);
-        value = self.shift_left(value);
-        ram.write(addr, value);
-    }
-
-    fn slo(&mut self, addr: u16, ram: &mut Ram) {
-        self.asl_addr(addr, ram);
-        self.pc = self.pc.wrapping_sub(1);
-        self.ora(addr, ram);
-    }
-
     fn shift_right(&mut self, mut value: u8) -> u8 {
         self.carry_flag = value & 1 != 0;
         value >>= 1;
@@ -820,22 +1050,6 @@ impl Cpu {
 
         self.pc += 1;
         return value;
-    }
-
-    fn lsr(&mut self, _: &mut Ram) {
-        self.a = self.shift_right(self.a);
-    }
-
-    fn lsr_addr(&mut self, addr: u16, ram: &mut Ram) {
-        let mut value = ram.read(addr);
-        value = self.shift_right(value);
-        ram.write(addr, value);
-    }
-
-    fn sre(&mut self, addr: u16, ram: &mut Ram) {
-        self.lsr_addr(addr, ram);
-        self.pc = self.pc.wrapping_sub(1);
-        self.eor(addr, ram);
     }
 
     fn rotate_left(&mut self, mut value: u8) -> u8 {
@@ -851,22 +1065,6 @@ impl Cpu {
         return value;
     }
 
-    fn rol(&mut self, _: &mut Ram) {
-        self.a = self.rotate_left(self.a);
-    }
-
-    fn rol_addr(&mut self, addr: u16, ram: &mut Ram) {
-        let mut value = ram.read(addr);
-        value = self.rotate_left(value);
-        ram.write(addr, value);
-    }
-
-    fn rla(&mut self, addr: u16, ram: &mut Ram) {
-        self.rol_addr(addr, ram);
-        self.pc = self.pc.wrapping_sub(1);
-        self.and(addr, ram);
-    }
-
     fn rotate_right(&mut self, mut value: u8) -> u8 {
         let old = value;
         value >>= 1;
@@ -880,100 +1078,6 @@ impl Cpu {
         return value;
     }
 
-    fn ror(&mut self, _: &mut Ram) {
-        self.a = self.rotate_right(self.a);
-    }
-
-    fn ror_addr(&mut self, addr: u16, ram: &mut Ram) {
-        let mut value = ram.read(addr);
-        value = self.rotate_right(value);
-        ram.write(addr, value);
-    }
-
-    fn rra(&mut self, addr: u16, ram: &mut Ram) {
-        self.ror_addr(addr, ram);
-        self.pc = self.pc.wrapping_sub(1);
-        self.adc(addr, ram);
-    }
-
-    fn clc(&mut self, _: &mut Ram) {
-        self.carry_flag = false;
-
-        self.pc += 1;
-    }
-
-    fn sec(&mut self, _: &mut Ram) {
-        self.carry_flag = true;
-
-        self.pc += 1;
-    }
-
-    fn cld(&mut self, _: &mut Ram) {
-        self.decimal_flag = false;
-
-        self.pc += 1;
-    }
-
-    fn sed(&mut self, _: &mut Ram) {
-        self.decimal_flag = true;
-
-        self.pc += 1;
-    }
-
-    fn cli(&mut self, _: &mut Ram) {
-        self.interrupt_flag = false;
-
-        self.pc += 1;
-    }
-
-    fn sei(&mut self, _: &mut Ram) {
-        self.interrupt_flag = true;
-
-        self.pc += 1;
-    }
-
-    fn clv(&mut self, _: &mut Ram) {
-        self.overflow_flag = false;
-
-        self.pc += 1;
-    }
-
-    fn cmp(&mut self, addr: u16, ram: &mut Ram) {
-        let value = ram.read(addr);
-
-        let res = self.a.wrapping_sub(value);
-
-        self.carry_flag = self.a >= value;
-        self.zero_flag = self.a == value;
-        self.negative_flag = res & NEGATIVE_MASK != 0;
-
-        self.pc += 1;
-    }
-
-    fn cpx(&mut self, addr: u16, ram: &mut Ram) {
-        let value = ram.read(addr);
-
-        let res = self.x.wrapping_sub(value);
-
-        self.carry_flag = self.x >= value;
-        self.zero_flag = self.x == value;
-        self.negative_flag = res & NEGATIVE_MASK != 0;
-
-        self.pc += 1;
-    }
-
-    fn cpy(&mut self, addr: u16, ram: &mut Ram) {
-        let value = ram.read(addr);
-
-        let res = self.y.wrapping_sub(value);
-
-        self.carry_flag = self.y >= value;
-        self.zero_flag = self.y == value;
-        self.negative_flag = res & NEGATIVE_MASK != 0;
-
-        self.pc += 1;
-    }
-
     fn add_with_carry(&mut self, value: u8) {
         let t1 = self.a.wrapping_add(value);
         let c = t1 < self.a;
@@ -983,74 +1087,5 @@ impl Cpu {
         self.a = t2;
         self.zero_flag = self.a == 0;
         self.negative_flag = self.a & NEGATIVE_MASK != 0;
-    }
-
-    fn adc(&mut self, addr: u16, ram: &mut Ram) {
-        let value = ram.read(addr);
-
-        self.add_with_carry(value);
-
-        self.pc += 1;
-    }
-
-    fn sbc(&mut self, addr: u16, ram: &mut Ram) {
-        let value = ram.read(addr);
-
-        self.add_with_carry(!value);
-
-        self.pc += 1;
-    }
-
-    fn brk(&mut self, ram: &mut Ram) {
-        self.push_long(self.pc + 2, ram);
-        self.break_cmd_flag = true;
-        self.reserved_flag = true;
-        self.push(self.status_to_word(), ram);
-
-        let mut addr: u16 = ram.read(0xfffe) as u16;
-        addr |= (ram.read(0xffff) as u16) << 8;
-
-        self.pc = addr;
-        self.interrupt_flag = true;
-    }
-
-    fn rti(&mut self, ram: &mut Ram) {
-        let word = self.pop(ram);
-        self.word_to_status(word);
-        self.pc = self.pop_long(ram);
-    }
-
-    fn inc(&mut self, addr: u16, ram: &mut Ram) {
-        let mut value = ram.read(addr);
-        value = value.wrapping_add(1);
-        ram.write(addr, value);
-
-        self.zero_flag = value == 0;
-        self.negative_flag = value & NEGATIVE_MASK != 0;
-
-        self.pc = self.pc.wrapping_add(1);
-    }
-
-    fn isc(&mut self, addr: u16, ram: &mut Ram) {
-        self.inc(addr, ram);
-        self.pc = self.pc.wrapping_sub(1);
-        self.sbc(addr, ram);
-    }
-
-    fn dec(&mut self, addr: u16, ram: &mut Ram) {
-        let mut value = ram.read(addr);
-        value = value.wrapping_sub(1);
-        ram.write(addr, value);
-
-        self.zero_flag = value == 0;
-        self.negative_flag = value & NEGATIVE_MASK != 0;
-
-        self.pc = self.pc.wrapping_add(1);
-    }
-
-    fn dcp(&mut self, addr: u16, ram: &mut Ram) {
-        self.dec(addr, ram);
-        self.pc = self.pc.wrapping_sub(1);
-        self.cmp(addr, ram);
     }
 }
