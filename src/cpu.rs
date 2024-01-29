@@ -1,4 +1,5 @@
 use std::fmt;
+use std::num::Wrapping;
 
 use crate::ram::Ram;
 
@@ -21,6 +22,8 @@ pub struct Cpu {
     reserved_flag: bool,
     overflow_flag: bool,
     negative_flag: bool,
+
+    pub cycles: Wrapping<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -116,6 +119,7 @@ enum InstructionKind {
 struct Instruction {
     kind: InstructionKind,
     addr_mode: AddressingMode,
+    cycles: u32,
 }
 
 trait InstructionTrait {
@@ -125,7 +129,7 @@ trait InstructionTrait {
 }
 
 macro_rules! impl_instr {
-    ($instruction:ident, $instruction_logic:expr) => {
+    ($instruction:ident, $instruction_logic:expr, $cycles: expr) => {
         struct $instruction;
         impl InstructionTrait for $instruction {
             fn instr(cpu: &mut Cpu, addr: u16, mem: &mut Ram) {
@@ -149,526 +153,1351 @@ macro_rules! impl_instr {
                 };
 
                 Self::instr(cpu, addr, mem);
+                let cycles = $cycles(addr_mode.clone());
                 Instruction {
                     kind: InstructionKind::$instruction,
                     addr_mode,
+                    cycles,
                 }
             }
         }
     };
 }
 
-impl_instr!(Nop, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.pc += 1;
-});
-
-impl_instr!(Lda, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    cpu.a = mem.read(addr);
-
-    cpu.zero_flag = cpu.a == 0;
-
-    cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Ldx, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    cpu.x = mem.read(addr);
-
-    cpu.zero_flag = cpu.x == 0;
-    cpu.negative_flag = cpu.x & NEGATIVE_MASK != 0;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Ldy, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    cpu.y = mem.read(addr);
-
-    cpu.zero_flag = cpu.y == 0;
-    cpu.negative_flag = cpu.y & NEGATIVE_MASK != 0;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Lax, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    let value = mem.read(addr);
-    cpu.x = value;
-    cpu.a = value;
-
-    cpu.zero_flag = cpu.a == 0;
-    cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Sta, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    mem.write(addr, cpu.a);
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Stx, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    mem.write(addr, cpu.x);
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Sty, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    mem.write(addr, cpu.y);
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Sax, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    mem.write(addr, cpu.a & cpu.x);
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Tax, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.x = cpu.a;
-
-    cpu.zero_flag = cpu.x == 0;
-    cpu.negative_flag = cpu.x & NEGATIVE_MASK != 0;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Tay, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.y = cpu.a;
-
-    cpu.zero_flag = cpu.y == 0;
-    cpu.negative_flag = cpu.y & NEGATIVE_MASK != 0;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Txa, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.a = cpu.x;
-
-    cpu.zero_flag = cpu.a == 0;
-    cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Tya, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.a = cpu.y;
-
-    cpu.zero_flag = cpu.a == 0;
-    cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Tsx, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.x = cpu.sp;
-
-    cpu.zero_flag = cpu.x == 0;
-    cpu.negative_flag = cpu.x & NEGATIVE_MASK != 0;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Txs, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.sp = cpu.x;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Pha, |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
-    cpu.push(cpu.a, mem);
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Php, |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
-    // TODO: Find if this is realy correct
-    cpu.reserved_flag = true;
-    cpu.break_cmd_flag = true;
-
-    cpu.push(cpu.status_to_word(), mem);
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Pla, |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
-    cpu.a = cpu.pop(mem);
-
-    cpu.zero_flag = cpu.a == 0;
-    cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Plp, |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
-    let status = cpu.pop(mem);
-    cpu.word_to_status(status);
-
-    cpu.pc += 1;
-});
-
-impl_instr!(And, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    cpu.a &= mem.read(addr);
-
-    cpu.zero_flag = cpu.a == 0;
-    cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Eor, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    cpu.a ^= mem.read(addr);
-
-    cpu.zero_flag = cpu.a == 0;
-    cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Ora, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    cpu.a |= mem.read(addr);
-
-    cpu.zero_flag = cpu.a == 0;
-    cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Bit, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    let value = mem.read(addr);
-
-    cpu.zero_flag = cpu.a & value == 0;
-    cpu.overflow_flag = value & 1 << 6 != 0;
-    cpu.negative_flag = value & NEGATIVE_MASK != 0;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Jmp, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
-    cpu.pc = addr;
-});
-
-impl_instr!(Jsr, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    cpu.push_long(cpu.pc, mem);
-    cpu.pc = addr;
-});
-
-impl_instr!(Rts, |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
-    let addr = cpu.pop_long(mem);
-    cpu.pc = addr.wrapping_add(1);
-});
-
-impl_instr!(Bne, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
-    if !cpu.zero_flag {
-        cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+impl_instr!(
+    Nop,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            Immediate => 2,
+            ZeroPage => 3,
+            ZeroPageX => 4,
+            Absolute => 4,
+            AbsoluteX => 4,
+            _ => unimplemented!(),
+        }
     }
+);
 
-    cpu.pc += 1;
-});
+impl_instr!(
+    Lda,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        cpu.a = mem.read(addr);
 
-impl_instr!(Beq, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
-    if cpu.zero_flag {
-        cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+        cpu.zero_flag = cpu.a == 0;
+
+        cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Immediate => 2,
+            ZeroPage => 3,
+            ZeroPageX => 4,
+            Absolute => 4,
+            AbsoluteX => 4,
+            AbsoluteY => 4,
+            IndirectIndexed => 6,
+            IndexedIndirect => 5,
+            _ => unimplemented!(),
+        }
     }
+);
 
-    cpu.pc += 1;
-});
+impl_instr!(
+    Ldx,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        cpu.x = mem.read(addr);
 
-impl_instr!(Bpl, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
-    if !cpu.negative_flag {
-        cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+        cpu.zero_flag = cpu.x == 0;
+        cpu.negative_flag = cpu.x & NEGATIVE_MASK != 0;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Immediate => 2,
+            ZeroPage => 3,
+            ZeroPageY => 4,
+            Absolute => 4,
+            AbsoluteX => 4,
+            _ => unimplemented!(),
+        }
     }
+);
 
-    cpu.pc += 1;
-});
+impl_instr!(
+    Ldy,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        cpu.y = mem.read(addr);
 
-impl_instr!(Bcc, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
-    if !cpu.carry_flag {
-        cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+        cpu.zero_flag = cpu.y == 0;
+        cpu.negative_flag = cpu.y & NEGATIVE_MASK != 0;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Immediate => 2,
+            ZeroPage => 3,
+            ZeroPageX => 4,
+            Absolute => 4,
+            AbsoluteX => 4,
+            _ => unimplemented!(),
+        }
     }
+);
 
-    cpu.pc += 1;
-});
+impl_instr!(
+    Lax,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        let value = mem.read(addr);
+        cpu.x = value;
+        cpu.a = value;
 
-impl_instr!(Bcs, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
-    if cpu.carry_flag {
-        cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+        cpu.zero_flag = cpu.a == 0;
+        cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 3,
+            ZeroPageY => 4,
+            Absolute => 4,
+            AbsoluteY => 4,
+            IndexedIndirect => 6,
+            IndirectIndexed => 5,
+            _ => unimplemented!(),
+        }
     }
+);
 
-    cpu.pc += 1;
-});
+impl_instr!(
+    Sta,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        mem.write(addr, cpu.a);
 
-impl_instr!(Bmi, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
-    if cpu.negative_flag {
-        cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 3,
+            ZeroPageX => 4,
+            Absolute => 4,
+            AbsoluteX => 5,
+            AbsoluteY => 5,
+            IndexedIndirect => 6,
+            IndirectIndexed => 6,
+            _ => unimplemented!(),
+        }
     }
+);
 
-    cpu.pc += 1;
-});
+impl_instr!(
+    Stx,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        mem.write(addr, cpu.x);
 
-impl_instr!(Bvc, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
-    if !cpu.overflow_flag {
-        cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 3,
+            ZeroPageY => 4,
+            Absolute => 4,
+            _ => unimplemented!(),
+        }
     }
+);
 
-    cpu.pc += 1;
-});
+impl_instr!(
+    Sty,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        mem.write(addr, cpu.y);
 
-impl_instr!(Bvs, |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
-    if cpu.overflow_flag {
-        cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 3,
+            ZeroPageX => 4,
+            Absolute => 4,
+            _ => unimplemented!(),
+        }
     }
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Dex, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.x = cpu.x.wrapping_sub(1);
-
-    cpu.zero_flag = cpu.x == 0;
-    cpu.negative_flag = (cpu.x >> 7) & 1 == 1;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Dey, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.y = cpu.y.wrapping_sub(1);
-
-    cpu.zero_flag = cpu.y == 0;
-    cpu.negative_flag = (cpu.y >> 7) & 1 == 1;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Inc, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    let mut value = mem.read(addr);
-    value = value.wrapping_add(1);
-    mem.write(addr, value);
-
-    cpu.zero_flag = value == 0;
-    cpu.negative_flag = value & NEGATIVE_MASK != 0;
-
-    cpu.pc = cpu.pc.wrapping_add(1);
-});
-
-impl_instr!(Incx, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.x = cpu.x.wrapping_add(1);
-
-    cpu.zero_flag = cpu.x == 0;
-    cpu.negative_flag = (cpu.x >> 7) & 1 == 1;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Incy, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.y = cpu.y.wrapping_add(1);
-
-    cpu.zero_flag = cpu.y == 0;
-    cpu.negative_flag = (cpu.y >> 7) & 1 == 1;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Asl, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.a = cpu.shift_left(cpu.a);
-});
-
-impl_instr!(AslAddr, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    let mut value = mem.read(addr);
-    value = cpu.shift_left(value);
-    mem.write(addr, value);
-});
-
-impl_instr!(Slo, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    AslAddr::instr(cpu, addr, mem);
-    cpu.pc = cpu.pc.wrapping_sub(1);
-    Ora::instr(cpu, addr, mem);
-});
-
-impl_instr!(Lsr, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.a = cpu.shift_right(cpu.a);
-});
-
-impl_instr!(LsrAddr, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    let mut value = mem.read(addr);
-    value = cpu.shift_right(value);
-    mem.write(addr, value);
-});
-
-impl_instr!(Sre, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    LsrAddr::instr(cpu, addr, mem);
-    cpu.pc = cpu.pc.wrapping_sub(1);
-    Eor::instr(cpu, addr, mem);
-});
-
-impl_instr!(Rol, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.a = cpu.rotate_left(cpu.a);
-});
-
-impl_instr!(RolAddr, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    let mut value = mem.read(addr);
-    value = cpu.rotate_left(value);
-    mem.write(addr, value);
-});
-
-impl_instr!(Rla, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    RolAddr::instr(cpu, addr, mem);
-    cpu.pc = cpu.pc.wrapping_sub(1);
-    And::instr(cpu, addr, mem);
-});
-
-impl_instr!(Ror, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.a = cpu.rotate_right(cpu.a);
-});
-
-impl_instr!(RorAddr, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    let mut value = mem.read(addr);
-    value = cpu.rotate_right(value);
-    mem.write(addr, value);
-});
-
-impl_instr!(Rra, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    RorAddr::instr(cpu, addr, mem);
-    cpu.pc = cpu.pc.wrapping_sub(1);
-    Adc::instr(cpu, addr, mem);
-});
-
-impl_instr!(Clc, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.carry_flag = false;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Sec, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.carry_flag = true;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Cld, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.decimal_flag = false;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Sed, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.decimal_flag = true;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Cli, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.interrupt_flag = false;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Sei, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.interrupt_flag = true;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Clv, |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
-    cpu.overflow_flag = false;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Cmp, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    let value = mem.read(addr);
-
-    let res = cpu.a.wrapping_sub(value);
-
-    cpu.carry_flag = cpu.a >= value;
-    cpu.zero_flag = cpu.a == value;
-    cpu.negative_flag = res & NEGATIVE_MASK != 0;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Cpx, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    let value = mem.read(addr);
-
-    let res = cpu.x.wrapping_sub(value);
-
-    cpu.carry_flag = cpu.x >= value;
-    cpu.zero_flag = cpu.x == value;
-    cpu.negative_flag = res & NEGATIVE_MASK != 0;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Cpy, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    let value = mem.read(addr);
-
-    let res = cpu.y.wrapping_sub(value);
-
-    cpu.carry_flag = cpu.y >= value;
-    cpu.zero_flag = cpu.y == value;
-    cpu.negative_flag = res & NEGATIVE_MASK != 0;
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Adc, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    let value = mem.read(addr);
-
-    cpu.add_with_carry(value);
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Sbc, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    let value = mem.read(addr);
-
-    cpu.add_with_carry(!value);
-
-    cpu.pc += 1;
-});
-
-impl_instr!(Brk, |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
-    cpu.push_long(cpu.pc + 2, mem);
-    cpu.break_cmd_flag = true;
-    cpu.reserved_flag = true;
-    cpu.push(cpu.status_to_word(), mem);
-
-    let mut addr: u16 = mem.read(0xfffe) as u16;
-    addr |= (mem.read(0xffff) as u16) << 8;
-
-    cpu.pc = addr;
-    cpu.interrupt_flag = true;
-});
-
-impl_instr!(Rti, |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
-    let word = cpu.pop(mem);
-    cpu.word_to_status(word);
-    cpu.pc = cpu.pop_long(mem);
-});
-
-impl_instr!(Isc, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    Inc::instr(cpu, addr, mem);
-    cpu.pc = cpu.pc.wrapping_sub(1);
-    Sbc::instr(cpu, addr, mem);
-});
-
-impl_instr!(Dec, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    let mut value = mem.read(addr);
-    value = value.wrapping_sub(1);
-    mem.write(addr, value);
-
-    cpu.zero_flag = value == 0;
-    cpu.negative_flag = value & NEGATIVE_MASK != 0;
-
-    cpu.pc = cpu.pc.wrapping_add(1);
-});
-
-impl_instr!(Dcp, |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
-    Dec::instr(cpu, addr, mem);
-    cpu.pc = cpu.pc.wrapping_sub(1);
-    Cmp::instr(cpu, addr, mem);
-});
+);
+
+impl_instr!(
+    Sax,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        mem.write(addr, cpu.a & cpu.x);
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 3,
+            ZeroPageY => 4,
+            Absolute => 4,
+            IndirectIndexed => 6,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Tax,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.x = cpu.a;
+
+        cpu.zero_flag = cpu.x == 0;
+        cpu.negative_flag = cpu.x & NEGATIVE_MASK != 0;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Tay,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.y = cpu.a;
+
+        cpu.zero_flag = cpu.y == 0;
+        cpu.negative_flag = cpu.y & NEGATIVE_MASK != 0;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Txa,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.a = cpu.x;
+
+        cpu.zero_flag = cpu.a == 0;
+        cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Tya,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.a = cpu.y;
+
+        cpu.zero_flag = cpu.a == 0;
+        cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Tsx,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.x = cpu.sp;
+
+        cpu.zero_flag = cpu.x == 0;
+        cpu.negative_flag = cpu.x & NEGATIVE_MASK != 0;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Txs,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.sp = cpu.x;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Pha,
+    |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+        cpu.push(cpu.a, mem);
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 3,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Php,
+    |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+        // TODO: Find if this is realy correct
+        cpu.reserved_flag = true;
+        cpu.break_cmd_flag = true;
+
+        cpu.push(cpu.status_to_word(), mem);
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 3,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Pla,
+    |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+        cpu.a = cpu.pop(mem);
+
+        cpu.zero_flag = cpu.a == 0;
+        cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 4,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Plp,
+    |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+        let status = cpu.pop(mem);
+        cpu.word_to_status(status);
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 4,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    And,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        cpu.a &= mem.read(addr);
+
+        cpu.zero_flag = cpu.a == 0;
+        cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Immediate => 2,
+            ZeroPage => 3,
+            ZeroPageX => 4,
+            ZeroPageY => 4,
+            Absolute => 4,
+            AbsoluteX => 4,
+            AbsoluteY => 4,
+            IndirectIndexed => 6,
+            IndexedIndirect => 5,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Eor,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        cpu.a ^= mem.read(addr);
+
+        cpu.zero_flag = cpu.a == 0;
+        cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Immediate => 2,
+            ZeroPage => 3,
+            ZeroPageX => 4,
+            ZeroPageY => 4,
+            Absolute => 4,
+            AbsoluteX => 4,
+            AbsoluteY => 4,
+            IndexedIndirect => 6,
+            IndirectIndexed => 5,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Ora,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        cpu.a |= mem.read(addr);
+
+        cpu.zero_flag = cpu.a == 0;
+        cpu.negative_flag = cpu.a & NEGATIVE_MASK != 0;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Immediate => 2,
+            ZeroPage => 3,
+            ZeroPageX => 4,
+            ZeroPageY => 4,
+            Absolute => 4,
+            AbsoluteX => 4,
+            AbsoluteY => 4,
+            IndexedIndirect => 6,
+            IndirectIndexed => 5,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Bit,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        let value = mem.read(addr);
+
+        cpu.zero_flag = cpu.a & value == 0;
+        cpu.overflow_flag = value & 1 << 6 != 0;
+        cpu.negative_flag = value & NEGATIVE_MASK != 0;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 3,
+            Absolute => 4,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Jmp,
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+        cpu.pc = addr;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Absolute => 3,
+            Indirect => 5,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Jsr,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        cpu.push_long(cpu.pc, mem);
+        cpu.pc = addr;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Absolute => 6,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Rts,
+    |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+        let addr = cpu.pop_long(mem);
+        cpu.pc = addr.wrapping_add(1);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 6,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Bne,
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+        if !cpu.zero_flag {
+            cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+        }
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Relative => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Beq,
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+        if cpu.zero_flag {
+            cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+        }
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Relative => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Bpl,
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+        if !cpu.negative_flag {
+            cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+        }
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Relative => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Bcc,
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+        if !cpu.carry_flag {
+            cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+        }
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Relative => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Bcs,
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+        if cpu.carry_flag {
+            cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+        }
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Relative => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Bmi,
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+        if cpu.negative_flag {
+            cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+        }
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Relative => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Bvc,
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+        if !cpu.overflow_flag {
+            cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+        }
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Relative => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Bvs,
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+        if cpu.overflow_flag {
+            cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
+        }
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Relative => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Dex,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.x = cpu.x.wrapping_sub(1);
+
+        cpu.zero_flag = cpu.x == 0;
+        cpu.negative_flag = (cpu.x >> 7) & 1 == 1;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Dey,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.y = cpu.y.wrapping_sub(1);
+
+        cpu.zero_flag = cpu.y == 0;
+        cpu.negative_flag = (cpu.y >> 7) & 1 == 1;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Inc,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        let mut value = mem.read(addr);
+        value = value.wrapping_add(1);
+        mem.write(addr, value);
+
+        cpu.zero_flag = value == 0;
+        cpu.negative_flag = value & NEGATIVE_MASK != 0;
+
+        cpu.pc = cpu.pc.wrapping_add(1);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 5,
+            ZeroPageX => 6,
+            Absolute => 6,
+            AbsoluteX => 7,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Incx,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.x = cpu.x.wrapping_add(1);
+
+        cpu.zero_flag = cpu.x == 0;
+        cpu.negative_flag = (cpu.x >> 7) & 1 == 1;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Incy,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.y = cpu.y.wrapping_add(1);
+
+        cpu.zero_flag = cpu.y == 0;
+        cpu.negative_flag = (cpu.y >> 7) & 1 == 1;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Asl,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.a = cpu.shift_left(cpu.a);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Accumulator => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    AslAddr,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        let mut value = mem.read(addr);
+        value = cpu.shift_left(value);
+        mem.write(addr, value);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 5,
+            ZeroPageX => 6,
+            Absolute => 6,
+            AbsoluteX => 7,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Slo,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        AslAddr::instr(cpu, addr, mem);
+        cpu.pc = cpu.pc.wrapping_sub(1);
+        Ora::instr(cpu, addr, mem);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 5,
+            ZeroPageX => 6,
+            Absolute => 6,
+            AbsoluteX => 7,
+            AbsoluteY => 7,
+            IndexedIndirect => 8,
+            IndirectIndexed => 8,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Lsr,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.a = cpu.shift_right(cpu.a);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Accumulator => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    LsrAddr,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        let mut value = mem.read(addr);
+        value = cpu.shift_right(value);
+        mem.write(addr, value);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 5,
+            ZeroPageX => 6,
+            Absolute => 6,
+            AbsoluteX => 7,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Sre,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        LsrAddr::instr(cpu, addr, mem);
+        cpu.pc = cpu.pc.wrapping_sub(1);
+        Eor::instr(cpu, addr, mem);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 5,
+            ZeroPageX => 6,
+            Absolute => 6,
+            AbsoluteX => 7,
+            AbsoluteY => 7,
+            IndexedIndirect => 8,
+            IndirectIndexed => 8,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Rol,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.a = cpu.rotate_left(cpu.a);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Accumulator => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    RolAddr,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        let mut value = mem.read(addr);
+        value = cpu.rotate_left(value);
+        mem.write(addr, value);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 5,
+            ZeroPageX => 6,
+            Absolute => 6,
+            AbsoluteX => 7,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Rla,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        RolAddr::instr(cpu, addr, mem);
+        cpu.pc = cpu.pc.wrapping_sub(1);
+        And::instr(cpu, addr, mem);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 5,
+            ZeroPageX => 6,
+            Absolute => 6,
+            AbsoluteX => 7,
+            AbsoluteY => 7,
+            IndexedIndirect => 8,
+            IndirectIndexed => 8,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Ror,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.a = cpu.rotate_right(cpu.a);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Accumulator => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    RorAddr,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        let mut value = mem.read(addr);
+        value = cpu.rotate_right(value);
+        mem.write(addr, value);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 5,
+            ZeroPageX => 6,
+            Absolute => 6,
+            AbsoluteX => 7,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Rra,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        RorAddr::instr(cpu, addr, mem);
+        cpu.pc = cpu.pc.wrapping_sub(1);
+        Adc::instr(cpu, addr, mem);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 5,
+            ZeroPageX => 6,
+            Absolute => 6,
+            AbsoluteX => 7,
+            AbsoluteY => 7,
+            IndexedIndirect => 8,
+            IndirectIndexed => 8,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Clc,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.carry_flag = false;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Sec,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.carry_flag = true;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Cld,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.decimal_flag = false;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Sed,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.decimal_flag = true;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Cli,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.interrupt_flag = false;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Sei,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.interrupt_flag = true;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Clv,
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+        cpu.overflow_flag = false;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 2,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Cmp,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        let value = mem.read(addr);
+
+        let res = cpu.a.wrapping_sub(value);
+
+        cpu.carry_flag = cpu.a >= value;
+        cpu.zero_flag = cpu.a == value;
+        cpu.negative_flag = res & NEGATIVE_MASK != 0;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Immediate => 2,
+            ZeroPage => 3,
+            ZeroPageX => 4,
+            Absolute => 4,
+            AbsoluteX => 4,
+            AbsoluteY => 4,
+            IndexedIndirect => 6,
+            IndirectIndexed => 5,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Cpx,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        let value = mem.read(addr);
+
+        let res = cpu.x.wrapping_sub(value);
+
+        cpu.carry_flag = cpu.x >= value;
+        cpu.zero_flag = cpu.x == value;
+        cpu.negative_flag = res & NEGATIVE_MASK != 0;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Immediate => 2,
+            ZeroPage => 3,
+            Absolute => 4,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Cpy,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        let value = mem.read(addr);
+
+        let res = cpu.y.wrapping_sub(value);
+
+        cpu.carry_flag = cpu.y >= value;
+        cpu.zero_flag = cpu.y == value;
+        cpu.negative_flag = res & NEGATIVE_MASK != 0;
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Immediate => 2,
+            ZeroPage => 3,
+            Absolute => 4,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Adc,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        let value = mem.read(addr);
+
+        cpu.add_with_carry(value);
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Immediate => 2,
+            ZeroPage => 3,
+            ZeroPageX => 4,
+            Absolute => 4,
+            AbsoluteX => 4,
+            AbsoluteY => 4,
+            IndexedIndirect => 6,
+            IndirectIndexed => 5,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Sbc,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        let value = mem.read(addr);
+
+        cpu.add_with_carry(!value);
+
+        cpu.pc += 1;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Immediate => 2,
+            ZeroPage => 3,
+            ZeroPageX => 4,
+            Absolute => 4,
+            AbsoluteX => 4,
+            AbsoluteY => 4,
+            IndexedIndirect => 6,
+            IndirectIndexed => 5,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Brk,
+    |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+        cpu.push_long(cpu.pc + 2, mem);
+        cpu.break_cmd_flag = true;
+        cpu.reserved_flag = true;
+        cpu.push(cpu.status_to_word(), mem);
+
+        let mut addr: u16 = mem.read(0xfffe) as u16;
+        addr |= (mem.read(0xffff) as u16) << 8;
+
+        cpu.pc = addr;
+        cpu.interrupt_flag = true;
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 7,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Rti,
+    |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+        let word = cpu.pop(mem);
+        cpu.word_to_status(word);
+        cpu.pc = cpu.pop_long(mem);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            Implicit => 6,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Isc,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        Inc::instr(cpu, addr, mem);
+        cpu.pc = cpu.pc.wrapping_sub(1);
+        Sbc::instr(cpu, addr, mem);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 5,
+            ZeroPageX => 6,
+            Absolute => 6,
+            AbsoluteX => 7,
+            AbsoluteY => 7,
+            IndexedIndirect => 8,
+            IndirectIndexed => 8,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Dec,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        let mut value = mem.read(addr);
+        value = value.wrapping_sub(1);
+        mem.write(addr, value);
+
+        cpu.zero_flag = value == 0;
+        cpu.negative_flag = value & NEGATIVE_MASK != 0;
+
+        cpu.pc = cpu.pc.wrapping_add(1);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 5,
+            ZeroPageX => 6,
+            Absolute => 6,
+            AbsoluteX => 7,
+            _ => unimplemented!(),
+        }
+    }
+);
+
+impl_instr!(
+    Dcp,
+    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+        Dec::instr(cpu, addr, mem);
+        cpu.pc = cpu.pc.wrapping_sub(1);
+        Cmp::instr(cpu, addr, mem);
+    },
+    |addr_mode: AddressingMode| {
+        use AddressingMode::*;
+        match addr_mode {
+            ZeroPage => 5,
+            ZeroPageX => 6,
+            Absolute => 6,
+            AbsoluteX => 7,
+            AbsoluteY => 7,
+            IndexedIndirect => 8,
+            IndirectIndexed => 8,
+            _ => unimplemented!(),
+        }
+    }
+);
 
 impl fmt::Display for Cpu {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -1000,6 +1829,7 @@ impl Cpu {
             _ => unimplemented!("{:#04X} opcode not implemented yet!\n", opcode),
         };
 
+        self.cycles += Wrapping(instr.cycles as usize);
         return instr;
     }
 
