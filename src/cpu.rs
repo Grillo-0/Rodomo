@@ -40,10 +40,88 @@ enum AddressingMode {
     IndirectIndexed,
 }
 
+#[derive(Debug)]
+enum InstructionKind {
+    Nop,
+    Lda,
+    Ldx,
+    Ldy,
+    Lax,
+    Sta,
+    Stx,
+    Sty,
+    Sax,
+    Tax,
+    Tay,
+    Txa,
+    Tya,
+    Tsx,
+    Txs,
+    Pha,
+    Php,
+    Pla,
+    Plp,
+    And,
+    Eor,
+    Ora,
+    Bit,
+    Jmp,
+    Jsr,
+    Rts,
+    Bne,
+    Beq,
+    Bpl,
+    Bcc,
+    Bcs,
+    Bmi,
+    Bvc,
+    Bvs,
+    Dex,
+    Dey,
+    Inc,
+    Incx,
+    Incy,
+    Asl,
+    AslAddr,
+    Slo,
+    Lsr,
+    LsrAddr,
+    Sre,
+    Rol,
+    RolAddr,
+    Rla,
+    Ror,
+    RorAddr,
+    Rra,
+    Clc,
+    Sec,
+    Cld,
+    Sed,
+    Cli,
+    Sei,
+    Clv,
+    Cmp,
+    Cpx,
+    Cpy,
+    Adc,
+    Sbc,
+    Brk,
+    Rti,
+    Isc,
+    Dec,
+    Dcp,
+}
+
+#[derive(Debug)]
+struct Instruction {
+    kind: InstructionKind,
+    addr_mode: AddressingMode,
+}
+
 trait InstructionTrait {
     fn instr(cpu: &mut Cpu, addr: u16, mem: &mut Ram);
 
-    fn run_with(addr_mode: AddressingMode, cpu: &mut Cpu, mem: &mut Ram);
+    fn run_with(addr_mode: AddressingMode, cpu: &mut Cpu, mem: &mut Ram) -> Instruction;
 }
 
 macro_rules! impl_instr {
@@ -54,7 +132,7 @@ macro_rules! impl_instr {
                 $instruction_logic(cpu, addr, mem);
             }
 
-            fn run_with(addr_mode: AddressingMode, cpu: &mut Cpu, mem: &mut Ram) {
+            fn run_with(addr_mode: AddressingMode, cpu: &mut Cpu, mem: &mut Ram) -> Instruction {
                 use AddressingMode::*;
                 let addr = match addr_mode {
                     Implicit | Accumulator => 0,
@@ -71,6 +149,10 @@ macro_rules! impl_instr {
                 };
 
                 Self::instr(cpu, addr, mem);
+                Instruction {
+                    kind: InstructionKind::$instruction,
+                    addr_mode,
+                }
             }
         }
     };
@@ -630,8 +712,8 @@ impl Cpu {
         self.run_instruction(opcode, ram);
     }
 
-    fn run_instruction(&mut self, opcode: u8, mem: &mut Ram) {
-        match opcode {
+    fn run_instruction(&mut self, opcode: u8, mem: &mut Ram) -> Instruction {
+        let instr = match opcode {
             0xEA => Nop::run_with(AddressingMode::Implicit, self, mem),
             0x1A => Nop::run_with(AddressingMode::Implicit, self, mem),
             0x3A => Nop::run_with(AddressingMode::Implicit, self, mem),
@@ -916,7 +998,9 @@ impl Cpu {
             0xD3 => Dcp::run_with(AddressingMode::IndexedIndirect, self, mem),
 
             _ => unimplemented!("{:#04X} opcode not implemented yet!\n", opcode),
-        }
+        };
+
+        return instr;
     }
 
     fn imm(&mut self, _: &mut Ram) -> u16 {
