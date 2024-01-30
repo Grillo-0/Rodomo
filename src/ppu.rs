@@ -74,8 +74,16 @@ impl MemoryMapped for Ppu {
                 } else {
                     VramIncrement::Down
                 };
-                self.sprite_table_addr = 0x1000 * (self.control & SPRITE_MASK) as u16;
-                self.background_table_addr = 0x1000 * (self.control & BACKGROUND_MASK) as u16;
+                self.sprite_table_addr = if self.control & SPRITE_MASK == 0 {
+                    0
+                } else {
+                    0x1000
+                };
+                self.background_table_addr = if self.control & BACKGROUND_MASK == 0 {
+                    0
+                } else {
+                    0x1000
+                };
                 self.sprite_size = if self.control & SPRITE_SIZE_MASK == 0 {
                     SpriteSize::Size8x8
                 } else {
