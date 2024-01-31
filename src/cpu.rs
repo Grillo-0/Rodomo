@@ -1,7 +1,7 @@
 use std::fmt;
 use std::num::Wrapping;
 
-use crate::ram::Ram;
+use crate::asc::{Asc, MemoryMapped};
 
 const NEGATIVE_MASK: u8 = 1 << 7;
 
@@ -123,20 +123,20 @@ struct Instruction {
 }
 
 trait InstructionTrait {
-    fn instr(cpu: &mut Cpu, addr: u16, mem: &mut Ram);
+    fn instr(cpu: &mut Cpu, addr: u16, mem: &mut Asc);
 
-    fn run_with(addr_mode: AddressingMode, cpu: &mut Cpu, mem: &mut Ram) -> Instruction;
+    fn run_with(addr_mode: AddressingMode, cpu: &mut Cpu, mem: &mut Asc) -> Instruction;
 }
 
 macro_rules! impl_instr {
     ($instruction:ident, $instruction_logic:expr, $cycles: expr) => {
         struct $instruction;
         impl InstructionTrait for $instruction {
-            fn instr(cpu: &mut Cpu, addr: u16, mem: &mut Ram) {
+            fn instr(cpu: &mut Cpu, addr: u16, mem: &mut Asc) {
                 $instruction_logic(cpu, addr, mem);
             }
 
-            fn run_with(addr_mode: AddressingMode, cpu: &mut Cpu, mem: &mut Ram) -> Instruction {
+            fn run_with(addr_mode: AddressingMode, cpu: &mut Cpu, mem: &mut Asc) -> Instruction {
                 use AddressingMode::*;
                 let addr = match addr_mode {
                     Implicit | Accumulator => 0,
@@ -166,7 +166,7 @@ macro_rules! impl_instr {
 
 impl_instr!(
     Nop,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.pc += 1;
     },
     |addr_mode: AddressingMode| {
@@ -185,7 +185,7 @@ impl_instr!(
 
 impl_instr!(
     Lda,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         cpu.a = mem.read(addr);
 
         cpu.zero_flag = cpu.a == 0;
@@ -212,7 +212,7 @@ impl_instr!(
 
 impl_instr!(
     Ldx,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         cpu.x = mem.read(addr);
 
         cpu.zero_flag = cpu.x == 0;
@@ -235,7 +235,7 @@ impl_instr!(
 
 impl_instr!(
     Ldy,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         cpu.y = mem.read(addr);
 
         cpu.zero_flag = cpu.y == 0;
@@ -258,7 +258,7 @@ impl_instr!(
 
 impl_instr!(
     Lax,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         let value = mem.read(addr);
         cpu.x = value;
         cpu.a = value;
@@ -284,7 +284,7 @@ impl_instr!(
 
 impl_instr!(
     Sta,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         mem.write(addr, cpu.a);
 
         cpu.pc += 1;
@@ -306,7 +306,7 @@ impl_instr!(
 
 impl_instr!(
     Stx,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         mem.write(addr, cpu.x);
 
         cpu.pc += 1;
@@ -324,7 +324,7 @@ impl_instr!(
 
 impl_instr!(
     Sty,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         mem.write(addr, cpu.y);
 
         cpu.pc += 1;
@@ -342,7 +342,7 @@ impl_instr!(
 
 impl_instr!(
     Sax,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         mem.write(addr, cpu.a & cpu.x);
 
         cpu.pc += 1;
@@ -361,7 +361,7 @@ impl_instr!(
 
 impl_instr!(
     Tax,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.x = cpu.a;
 
         cpu.zero_flag = cpu.x == 0;
@@ -380,7 +380,7 @@ impl_instr!(
 
 impl_instr!(
     Tay,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.y = cpu.a;
 
         cpu.zero_flag = cpu.y == 0;
@@ -399,7 +399,7 @@ impl_instr!(
 
 impl_instr!(
     Txa,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.a = cpu.x;
 
         cpu.zero_flag = cpu.a == 0;
@@ -418,7 +418,7 @@ impl_instr!(
 
 impl_instr!(
     Tya,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.a = cpu.y;
 
         cpu.zero_flag = cpu.a == 0;
@@ -437,7 +437,7 @@ impl_instr!(
 
 impl_instr!(
     Tsx,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.x = cpu.sp;
 
         cpu.zero_flag = cpu.x == 0;
@@ -456,7 +456,7 @@ impl_instr!(
 
 impl_instr!(
     Txs,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.sp = cpu.x;
 
         cpu.pc += 1;
@@ -472,7 +472,7 @@ impl_instr!(
 
 impl_instr!(
     Pha,
-    |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, mem: &mut Asc| {
         cpu.push(cpu.a, mem);
 
         cpu.pc += 1;
@@ -488,7 +488,7 @@ impl_instr!(
 
 impl_instr!(
     Php,
-    |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, mem: &mut Asc| {
         // TODO: Find if this is realy correct
         cpu.reserved_flag = true;
         cpu.break_cmd_flag = true;
@@ -508,7 +508,7 @@ impl_instr!(
 
 impl_instr!(
     Pla,
-    |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, mem: &mut Asc| {
         cpu.a = cpu.pop(mem);
 
         cpu.zero_flag = cpu.a == 0;
@@ -527,7 +527,7 @@ impl_instr!(
 
 impl_instr!(
     Plp,
-    |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, mem: &mut Asc| {
         let status = cpu.pop(mem);
         cpu.word_to_status(status);
 
@@ -544,7 +544,7 @@ impl_instr!(
 
 impl_instr!(
     And,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         cpu.a &= mem.read(addr);
 
         cpu.zero_flag = cpu.a == 0;
@@ -571,7 +571,7 @@ impl_instr!(
 
 impl_instr!(
     Eor,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         cpu.a ^= mem.read(addr);
 
         cpu.zero_flag = cpu.a == 0;
@@ -598,7 +598,7 @@ impl_instr!(
 
 impl_instr!(
     Ora,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         cpu.a |= mem.read(addr);
 
         cpu.zero_flag = cpu.a == 0;
@@ -625,7 +625,7 @@ impl_instr!(
 
 impl_instr!(
     Bit,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         let value = mem.read(addr);
 
         cpu.zero_flag = cpu.a & value == 0;
@@ -646,7 +646,7 @@ impl_instr!(
 
 impl_instr!(
     Jmp,
-    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Asc| {
         cpu.pc = addr;
     },
     |addr_mode: AddressingMode| {
@@ -661,7 +661,7 @@ impl_instr!(
 
 impl_instr!(
     Jsr,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         cpu.push_long(cpu.pc, mem);
         cpu.pc = addr;
     },
@@ -676,7 +676,7 @@ impl_instr!(
 
 impl_instr!(
     Rts,
-    |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, mem: &mut Asc| {
         let addr = cpu.pop_long(mem);
         cpu.pc = addr.wrapping_add(1);
     },
@@ -691,7 +691,7 @@ impl_instr!(
 
 impl_instr!(
     Bne,
-    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Asc| {
         if !cpu.zero_flag {
             cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
         }
@@ -709,7 +709,7 @@ impl_instr!(
 
 impl_instr!(
     Beq,
-    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Asc| {
         if cpu.zero_flag {
             cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
         }
@@ -727,7 +727,7 @@ impl_instr!(
 
 impl_instr!(
     Bpl,
-    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Asc| {
         if !cpu.negative_flag {
             cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
         }
@@ -745,7 +745,7 @@ impl_instr!(
 
 impl_instr!(
     Bcc,
-    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Asc| {
         if !cpu.carry_flag {
             cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
         }
@@ -763,7 +763,7 @@ impl_instr!(
 
 impl_instr!(
     Bcs,
-    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Asc| {
         if cpu.carry_flag {
             cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
         }
@@ -781,7 +781,7 @@ impl_instr!(
 
 impl_instr!(
     Bmi,
-    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Asc| {
         if cpu.negative_flag {
             cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
         }
@@ -799,7 +799,7 @@ impl_instr!(
 
 impl_instr!(
     Bvc,
-    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Asc| {
         if !cpu.overflow_flag {
             cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
         }
@@ -817,7 +817,7 @@ impl_instr!(
 
 impl_instr!(
     Bvs,
-    |cpu: &mut Cpu, addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, _mem: &mut Asc| {
         if cpu.overflow_flag {
             cpu.pc = cpu.pc.wrapping_add_signed((addr as i8) as i16);
         }
@@ -835,7 +835,7 @@ impl_instr!(
 
 impl_instr!(
     Dex,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.x = cpu.x.wrapping_sub(1);
 
         cpu.zero_flag = cpu.x == 0;
@@ -854,7 +854,7 @@ impl_instr!(
 
 impl_instr!(
     Dey,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.y = cpu.y.wrapping_sub(1);
 
         cpu.zero_flag = cpu.y == 0;
@@ -873,7 +873,7 @@ impl_instr!(
 
 impl_instr!(
     Inc,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         let mut value = mem.read(addr);
         value = value.wrapping_add(1);
         mem.write(addr, value);
@@ -897,7 +897,7 @@ impl_instr!(
 
 impl_instr!(
     Incx,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.x = cpu.x.wrapping_add(1);
 
         cpu.zero_flag = cpu.x == 0;
@@ -916,7 +916,7 @@ impl_instr!(
 
 impl_instr!(
     Incy,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.y = cpu.y.wrapping_add(1);
 
         cpu.zero_flag = cpu.y == 0;
@@ -935,7 +935,7 @@ impl_instr!(
 
 impl_instr!(
     Asl,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.a = cpu.shift_left(cpu.a);
     },
     |addr_mode: AddressingMode| {
@@ -949,7 +949,7 @@ impl_instr!(
 
 impl_instr!(
     AslAddr,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         let mut value = mem.read(addr);
         value = cpu.shift_left(value);
         mem.write(addr, value);
@@ -968,7 +968,7 @@ impl_instr!(
 
 impl_instr!(
     Slo,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         AslAddr::instr(cpu, addr, mem);
         cpu.pc = cpu.pc.wrapping_sub(1);
         Ora::instr(cpu, addr, mem);
@@ -990,7 +990,7 @@ impl_instr!(
 
 impl_instr!(
     Lsr,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.a = cpu.shift_right(cpu.a);
     },
     |addr_mode: AddressingMode| {
@@ -1004,7 +1004,7 @@ impl_instr!(
 
 impl_instr!(
     LsrAddr,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         let mut value = mem.read(addr);
         value = cpu.shift_right(value);
         mem.write(addr, value);
@@ -1023,7 +1023,7 @@ impl_instr!(
 
 impl_instr!(
     Sre,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         LsrAddr::instr(cpu, addr, mem);
         cpu.pc = cpu.pc.wrapping_sub(1);
         Eor::instr(cpu, addr, mem);
@@ -1045,7 +1045,7 @@ impl_instr!(
 
 impl_instr!(
     Rol,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.a = cpu.rotate_left(cpu.a);
     },
     |addr_mode: AddressingMode| {
@@ -1059,7 +1059,7 @@ impl_instr!(
 
 impl_instr!(
     RolAddr,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         let mut value = mem.read(addr);
         value = cpu.rotate_left(value);
         mem.write(addr, value);
@@ -1078,7 +1078,7 @@ impl_instr!(
 
 impl_instr!(
     Rla,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         RolAddr::instr(cpu, addr, mem);
         cpu.pc = cpu.pc.wrapping_sub(1);
         And::instr(cpu, addr, mem);
@@ -1100,7 +1100,7 @@ impl_instr!(
 
 impl_instr!(
     Ror,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.a = cpu.rotate_right(cpu.a);
     },
     |addr_mode: AddressingMode| {
@@ -1114,7 +1114,7 @@ impl_instr!(
 
 impl_instr!(
     RorAddr,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         let mut value = mem.read(addr);
         value = cpu.rotate_right(value);
         mem.write(addr, value);
@@ -1133,7 +1133,7 @@ impl_instr!(
 
 impl_instr!(
     Rra,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         RorAddr::instr(cpu, addr, mem);
         cpu.pc = cpu.pc.wrapping_sub(1);
         Adc::instr(cpu, addr, mem);
@@ -1155,7 +1155,7 @@ impl_instr!(
 
 impl_instr!(
     Clc,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.carry_flag = false;
 
         cpu.pc += 1;
@@ -1171,7 +1171,7 @@ impl_instr!(
 
 impl_instr!(
     Sec,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.carry_flag = true;
 
         cpu.pc += 1;
@@ -1187,7 +1187,7 @@ impl_instr!(
 
 impl_instr!(
     Cld,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.decimal_flag = false;
 
         cpu.pc += 1;
@@ -1203,7 +1203,7 @@ impl_instr!(
 
 impl_instr!(
     Sed,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.decimal_flag = true;
 
         cpu.pc += 1;
@@ -1219,7 +1219,7 @@ impl_instr!(
 
 impl_instr!(
     Cli,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.interrupt_flag = false;
 
         cpu.pc += 1;
@@ -1235,7 +1235,7 @@ impl_instr!(
 
 impl_instr!(
     Sei,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.interrupt_flag = true;
 
         cpu.pc += 1;
@@ -1251,7 +1251,7 @@ impl_instr!(
 
 impl_instr!(
     Clv,
-    |cpu: &mut Cpu, _addr: u16, _mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, _mem: &mut Asc| {
         cpu.overflow_flag = false;
 
         cpu.pc += 1;
@@ -1267,7 +1267,7 @@ impl_instr!(
 
 impl_instr!(
     Cmp,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         let value = mem.read(addr);
 
         let res = cpu.a.wrapping_sub(value);
@@ -1296,7 +1296,7 @@ impl_instr!(
 
 impl_instr!(
     Cpx,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         let value = mem.read(addr);
 
         let res = cpu.x.wrapping_sub(value);
@@ -1320,7 +1320,7 @@ impl_instr!(
 
 impl_instr!(
     Cpy,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         let value = mem.read(addr);
 
         let res = cpu.y.wrapping_sub(value);
@@ -1344,7 +1344,7 @@ impl_instr!(
 
 impl_instr!(
     Adc,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         let value = mem.read(addr);
 
         cpu.add_with_carry(value);
@@ -1369,7 +1369,7 @@ impl_instr!(
 
 impl_instr!(
     Sbc,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         let value = mem.read(addr);
 
         cpu.add_with_carry(!value);
@@ -1394,7 +1394,7 @@ impl_instr!(
 
 impl_instr!(
     Brk,
-    |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, mem: &mut Asc| {
         cpu.push_long(cpu.pc + 2, mem);
         cpu.break_cmd_flag = true;
         cpu.reserved_flag = true;
@@ -1417,7 +1417,7 @@ impl_instr!(
 
 impl_instr!(
     Rti,
-    |cpu: &mut Cpu, _addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, _addr: u16, mem: &mut Asc| {
         let word = cpu.pop(mem);
         cpu.word_to_status(word);
         cpu.pc = cpu.pop_long(mem);
@@ -1433,7 +1433,7 @@ impl_instr!(
 
 impl_instr!(
     Isc,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         Inc::instr(cpu, addr, mem);
         cpu.pc = cpu.pc.wrapping_sub(1);
         Sbc::instr(cpu, addr, mem);
@@ -1455,7 +1455,7 @@ impl_instr!(
 
 impl_instr!(
     Dec,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         let mut value = mem.read(addr);
         value = value.wrapping_sub(1);
         mem.write(addr, value);
@@ -1479,7 +1479,7 @@ impl_instr!(
 
 impl_instr!(
     Dcp,
-    |cpu: &mut Cpu, addr: u16, mem: &mut Ram| {
+    |cpu: &mut Cpu, addr: u16, mem: &mut Asc| {
         Dec::instr(cpu, addr, mem);
         cpu.pc = cpu.pc.wrapping_sub(1);
         Cmp::instr(cpu, addr, mem);
@@ -1524,24 +1524,24 @@ impl Cpu {
         }
     }
 
-    pub fn reset(&mut self, ram: &Ram) {
+    pub fn reset(&mut self, ram: &mut Asc) {
         let mut reset_addr = ram.read(0xfffc) as u16;
         reset_addr |= (ram.read(0xfffd) as u16) << 8;
         self.pc = reset_addr;
     }
 
-    pub fn nmi(&mut self, ram: &Ram) {
+    pub fn nmi(&mut self, ram: &mut Asc) {
         let mut nmi_addr = ram.read(0xfffa) as u16;
         nmi_addr |= (ram.read(0xfffb) as u16) << 8;
         self.pc = nmi_addr;
     }
 
-    pub fn read_instruction(&mut self, ram: &mut Ram) {
+    pub fn read_instruction(&mut self, ram: &mut Asc) {
         let opcode = ram.read(self.pc.into());
         self.run_instruction(opcode, ram);
     }
 
-    fn run_instruction(&mut self, opcode: u8, mem: &mut Ram) -> Instruction {
+    fn run_instruction(&mut self, opcode: u8, mem: &mut Asc) -> Instruction {
         let instr = match opcode {
             0xEA => Nop::run_with(AddressingMode::Implicit, self, mem),
             0x1A => Nop::run_with(AddressingMode::Implicit, self, mem),
@@ -1833,34 +1833,34 @@ impl Cpu {
         return instr;
     }
 
-    fn imm(&mut self, _: &mut Ram) -> u16 {
+    fn imm(&mut self, _: &mut Asc) -> u16 {
         self.pc += 1;
         self.pc
     }
 
-    fn zp(&mut self, ram: &mut Ram) -> u16 {
+    fn zp(&mut self, ram: &mut Asc) -> u16 {
         self.pc += 1;
         ram.read(self.pc) as u16
     }
 
-    fn zpx(&mut self, ram: &mut Ram) -> u16 {
+    fn zpx(&mut self, ram: &mut Asc) -> u16 {
         self.pc += 1;
         (ram.read(self.pc) as u16).wrapping_add(self.x as u16) & 0xff
     }
 
-    fn zpy(&mut self, ram: &mut Ram) -> u16 {
+    fn zpy(&mut self, ram: &mut Asc) -> u16 {
         self.pc += 1;
         (ram.read(self.pc) as u16).wrapping_add(self.y as u16) & 0xff
     }
 
-    fn abs(&mut self, ram: &mut Ram) -> u16 {
+    fn abs(&mut self, ram: &mut Asc) -> u16 {
         self.pc += 1;
         let addr = ram.read(self.pc);
         self.pc += 1;
         (ram.read(self.pc) as u16) << 8 | addr as u16
     }
 
-    fn abx(&mut self, ram: &mut Ram) -> u16 {
+    fn abx(&mut self, ram: &mut Asc) -> u16 {
         self.pc += 1;
         let mut addr = ram.read(self.pc) as u16;
         self.pc += 1;
@@ -1868,7 +1868,7 @@ impl Cpu {
         addr.wrapping_add(self.x as u16)
     }
 
-    fn aby(&mut self, ram: &mut Ram) -> u16 {
+    fn aby(&mut self, ram: &mut Asc) -> u16 {
         self.pc += 1;
         let mut addr = ram.read(self.pc) as u16;
         self.pc += 1;
@@ -1876,21 +1876,21 @@ impl Cpu {
         addr.wrapping_add(self.y as u16)
     }
 
-    fn inx(&mut self, ram: &mut Ram) -> u16 {
+    fn inx(&mut self, ram: &mut Asc) -> u16 {
         self.pc += 1;
         let mut addr: u16 = ram.read(self.pc) as u16;
         addr = (addr.wrapping_add(self.x as u16) & 0xff) as u16;
         (ram.read(addr + 1) as u16) << 8 | ram.read(addr.into()) as u16
     }
 
-    fn iny(&mut self, ram: &mut Ram) -> u16 {
+    fn iny(&mut self, ram: &mut Asc) -> u16 {
         self.pc += 1;
         let addr: u16 = ram.read(self.pc) as u16;
         let addr = (ram.read(addr.wrapping_add(1)) as u16) << 8 | ram.read(addr) as u16;
         addr.wrapping_add(self.y as u16)
     }
 
-    fn ind(&mut self, ram: &mut Ram) -> u16 {
+    fn ind(&mut self, ram: &mut Asc) -> u16 {
         self.pc += 1;
         let addr = ram.read(self.pc);
         self.pc += 1;
@@ -1898,23 +1898,23 @@ impl Cpu {
         (ram.read(addr + 1) as u16) << 8 | ram.read(addr.into()) as u16
     }
 
-    fn push(&mut self, value: u8, ram: &mut Ram) {
+    fn push(&mut self, value: u8, ram: &mut Asc) {
         ram.write(0x0100 | self.sp as u16, value);
 
         self.sp = self.sp.wrapping_sub(1);
     }
 
-    fn pop(&mut self, ram: &mut Ram) -> u8 {
+    fn pop(&mut self, ram: &mut Asc) -> u8 {
         self.sp = self.sp.wrapping_add(1);
         ram.read(0x0100 | self.sp as u16)
     }
 
-    fn push_long(&mut self, value: u16, ram: &mut Ram) {
+    fn push_long(&mut self, value: u16, ram: &mut Asc) {
         self.push(((value >> 8) & 0xff).try_into().unwrap(), ram);
         self.push((value & 0xff).try_into().unwrap(), ram);
     }
 
-    fn pop_long(&mut self, ram: &mut Ram) -> u16 {
+    fn pop_long(&mut self, ram: &mut Asc) -> u16 {
         let mut addr = self.pop(ram) as u16;
         addr |= (self.pop(ram) as u16) << 8;
         return addr;

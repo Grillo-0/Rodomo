@@ -1,11 +1,14 @@
+pub mod asc;
 pub mod cpu;
 pub mod gfx;
 pub mod ines;
 pub mod ppu;
 pub mod ram;
 
+use std::cell::RefCell;
 use std::env;
 use std::process;
+use std::rc::Rc;
 use std::thread;
 use std::time;
 
@@ -16,19 +19,28 @@ use crate::cpu::Cpu;
 use crate::ines::INes;
 use crate::ppu::Ppu;
 use crate::ram::Ram;
+use asc::Asc;
 
 struct Machine {
     cpu: Cpu,
-    ppu: Ppu,
-    memory: Ram,
+    ppu: Rc<RefCell<Ppu>>,
+    asc: Asc,
 }
 
 impl Machine {
     fn new(memory: Ram, ppu_memory: Ram) -> Machine {
+        let memory = Rc::new(RefCell::new(memory));
+        let ppu = Rc::new(RefCell::new(Ppu::new(ppu_memory)));
+
+        let mut asc = Asc::new();
+        asc.register_device_range(0xc000..=0xffff, memory);
+        asc.register_device_range(0x2000..0x2007, ppu.clone());
+        asc.register_device(0x4014, ppu.clone());
+
         Machine {
             cpu: Cpu::new(),
-            ppu: Ppu::new(ppu_memory),
-            memory,
+            ppu,
+            asc,
         }
     }
 
@@ -37,8 +49,8 @@ impl Machine {
 
         let mut events = sdl.event_pump().unwrap();
 
-        self.cpu.reset(&self.memory);
-        self.ppu.precal_chars(&gl);
+        self.cpu.reset(&mut self.asc);
+        self.ppu.borrow_mut().precal_chars(&gl);
         unsafe {
             gl.clear_color(0.1, 0.2, 0.3, 1.0);
         }
@@ -57,7 +69,7 @@ impl Machine {
                 let mut should_nmi = false;
                 for tick in 0..PPU_CYCLES_PER_SCANLINE {
                     if tick % 3 == 0 {
-                        self.cpu.read_instruction(&mut self.memory);
+                        self.cpu.read_instruction(&mut self.asc);
                     }
 
                     if cycles.0.abs_diff(self.cpu.cycles.0)
@@ -65,16 +77,14 @@ impl Machine {
                     {
                         break 'perframe;
                     }
-
-                    should_nmi = self.ppu.read_instruction(&mut self.memory)
                 }
 
                 if scanline == 241 && should_nmi {
-                    self.cpu.nmi(&self.memory);
+                    self.cpu.nmi(&mut self.asc);
                 }
             }
 
-            self.ppu.draw(&gl);
+            self.ppu.borrow_mut().draw(&gl);
             window.gl_swap_window();
 
             for e in events.poll_iter() {

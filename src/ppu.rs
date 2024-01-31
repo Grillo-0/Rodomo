@@ -1,5 +1,6 @@
 use glow::HasContext;
 
+use crate::asc::MemoryMapped;
 use crate::{gfx, Ram};
 
 const NAMETABLE_MASK: u8 = 0b11;
@@ -60,6 +61,58 @@ pub struct Ppu {
 
     chars_texture: Option<glow::Texture>,
     char_program: Option<glow::Program>,
+}
+
+impl MemoryMapped for Ppu {
+    fn write(&mut self, addr: u16, value: u8) {
+        match addr {
+            0x2000 => {
+                self.control = value;
+                self.nametable_base = 0x2000 + 0x0400 * (self.control & NAMETABLE_MASK) as u16;
+                self.vram_increment = if self.control & VRAM_MASK == 0 {
+                    VramIncrement::Across
+                } else {
+                    VramIncrement::Down
+                };
+                self.sprite_table_addr = 0x1000 * (self.control & SPRITE_MASK) as u16;
+                self.background_table_addr = 0x1000 * (self.control & BACKGROUND_MASK) as u16;
+                self.sprite_size = if self.control & SPRITE_SIZE_MASK == 0 {
+                    SpriteSize::Size8x8
+                } else {
+                    SpriteSize::Size8x16
+                };
+                self.job = if self.control & MASTER_SLAVE_MASK == 0 {
+                    JobType::Read
+                } else {
+                    JobType::Output
+                };
+            }
+            0x2001 => self.mask = value,
+            0x2002 => (),
+            0x2003 => self.oam_addr = value,
+            0x2004 => self.oam_data = value,
+            0x2005 => self.scroll = value,
+            0x2006 => self.addr = value,
+            0x2007 => self.data = value,
+            0x4014 => self.oam_dma = value,
+            _ => panic!("Address {addr:#x} is not registered by the PPU"),
+        }
+    }
+
+    fn read(&mut self, addr: u16) -> u8 {
+        match addr {
+            0x2000 => self.control,
+            0x2001 => self.mask,
+            0x2002 => self.status,
+            0x2003 => self.oam_addr,
+            0x2004 => self.oam_data,
+            0x2005 => self.scroll,
+            0x2006 => self.addr,
+            0x2007 => self.data,
+            0x4014 => self.oam_dma,
+            _ => panic!("Address {addr:#x} is not registered by the PPU"),
+        }
+    }
 }
 
 impl Ppu {
@@ -162,39 +215,6 @@ impl Ppu {
         }
 
         (self.chars_texture, self.char_program) = (Some(chars_texture), Some(char_program));
-    }
-
-    pub fn read_instruction(&mut self, cpu_memory: &mut Ram) -> bool {
-        self.control = cpu_memory.read(0x2000);
-        self.mask = cpu_memory.read(0x2001);
-        self.status = cpu_memory.read(0x2002);
-        self.oam_addr = cpu_memory.read(0x2003);
-        self.oam_data = cpu_memory.read(0x2004);
-        self.scroll = cpu_memory.read(0x2005);
-        self.addr = cpu_memory.read(0x2006);
-        self.data = cpu_memory.read(0x2007);
-        self.oam_dma = cpu_memory.read(0x4014);
-
-        self.nametable_base = 0x2000 + 0x0400 * (self.control & NAMETABLE_MASK) as u16;
-        self.vram_increment = if self.control & VRAM_MASK == 0 {
-            VramIncrement::Across
-        } else {
-            VramIncrement::Down
-        };
-        self.sprite_table_addr = 0x0000 + 0x1000 * (self.control & SPRITE_MASK) as u16;
-        self.background_table_addr = 0x0000 + 0x1000 * (self.control & BACKGROUND_MASK) as u16;
-        self.sprite_size = if self.control & SPRITE_SIZE_MASK == 0 {
-            SpriteSize::Size8x8
-        } else {
-            SpriteSize::Size8x16
-        };
-        self.job = if self.control & MASTER_SLAVE_MASK == 0 {
-            JobType::Read
-        } else {
-            JobType::Output
-        };
-
-        return (self.control & NMI_MASK) != 0;
     }
 
     unsafe fn draw_char(&self, gl: &glow::Context, index: usize, x: usize, y: usize) {
