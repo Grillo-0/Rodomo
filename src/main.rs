@@ -33,9 +33,12 @@ impl Machine {
         let ppu = Rc::new(RefCell::new(Ppu::new(ppu_memory)));
 
         let mut asc = Asc::new();
-        asc.register_device_range(0xc000..=0xffff, memory);
-        asc.register_device_range(0x2000..0x2007, ppu.clone());
-        asc.register_device(0x4014, ppu.clone());
+        // TODO: Handle memory mirroring
+        // Based on https://www.nesdev.org/wiki/CPU_memory_map
+        asc.register_device_range(0x0000..=0x07ff, memory.clone()); // Internal RAM
+        asc.register_device_range(0x2000..=0x2007, ppu.clone()); // PPU registers
+        asc.register_device(0x4014, ppu.clone()); // OAM DMA
+        asc.register_device_range(0x4020..=0xffff, memory); // Cartridge space
 
         Machine {
             cpu: Cpu::new(),
