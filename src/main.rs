@@ -67,18 +67,17 @@ impl Machine {
         loop {
             let start = time::Instant::now();
 
-            let cycles = self.cpu.cycles;
             'perframe: for scanline in 0..SCANLINES_PER_FRAME {
                 let mut should_nmi = false;
+                let cycles = self.cpu.cycles;
                 for tick in 0..PPU_CYCLES_PER_SCANLINE {
                     if tick % 3 == 0 {
                         self.cpu.read_instruction(&mut self.asc);
                     }
 
-                    if cycles.0.abs_diff(self.cpu.cycles.0)
-                        > (SCANLINES_PER_FRAME * PPU_CYCLES_PER_SCANLINE / 3) as usize
+                    if cycles.0.abs_diff(self.cpu.cycles.0) > (PPU_CYCLES_PER_SCANLINE / 3) as usize
                     {
-                        break 'perframe;
+                        break;
                     }
                 }
 
