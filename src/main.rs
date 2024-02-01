@@ -68,7 +68,6 @@ impl Machine {
             let start = time::Instant::now();
 
             'perframe: for scanline in 0..SCANLINES_PER_FRAME {
-                let mut should_nmi = false;
                 let cycles = self.cpu.cycles;
                 for tick in 0..PPU_CYCLES_PER_SCANLINE {
                     if tick % 3 == 0 {
@@ -81,7 +80,18 @@ impl Machine {
                     }
                 }
 
-                if scanline == 241 && should_nmi {
+                if scanline == 0 {
+                    println!("[INFO]: ending vblank");
+                    self.ppu.borrow_mut().reset_vblank();
+                }
+
+                if scanline == 241 {
+                    println!("[INFO]: starting vblank");
+                    self.ppu.borrow_mut().set_vblank();
+                }
+
+                if scanline == 241 && self.ppu.borrow().should_nmi() {
+                    println!("[INFO]: Sending NMI!!");
                     self.cpu.nmi(&mut self.asc);
                 }
             }

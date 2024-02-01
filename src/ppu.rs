@@ -11,6 +11,8 @@ const SPRITE_SIZE_MASK: u8 = 1 << 5;
 const MASTER_SLAVE_MASK: u8 = 1 << 6;
 const NMI_MASK: u8 = 1 << 7;
 
+const VBLANK_MASK: u8 = 1 << 7;
+
 const NUM_CHARS: u32 = 512;
 const CHAR_PIXEL_SIZE: u32 = 8;
 
@@ -56,6 +58,9 @@ pub struct Ppu {
     background_table_addr: u16,
     sprite_size: SpriteSize,
     job: JobType,
+    nmi: bool,
+
+    vblank: bool,
 
     memory: Ram,
 
@@ -94,6 +99,7 @@ impl MemoryMapped for Ppu {
                 } else {
                     JobType::Output
                 };
+                self.nmi = self.control & NMI_MASK != 0;
             }
             0x2001 => self.mask = value,
             0x2002 => (),
@@ -111,7 +117,11 @@ impl MemoryMapped for Ppu {
         match addr {
             0x2000 => self.control,
             0x2001 => self.mask,
-            0x2002 => self.status,
+            0x2002 => {
+                let st = self.status;
+                self.status &= !VBLANK_MASK;
+                st
+            }
             0x2003 => self.oam_addr,
             0x2004 => self.oam_data,
             0x2005 => self.scroll,
@@ -142,6 +152,9 @@ impl Ppu {
             background_table_addr: 0,
             sprite_size: SpriteSize::default(),
             job: JobType::default(),
+            nmi: false,
+
+            vblank: false,
 
             memory,
             chars_texture: None,
@@ -341,5 +354,19 @@ impl Ppu {
                 }
             }
         }
+    }
+
+    pub fn reset_vblank(&mut self) {
+        self.vblank = false;
+        self.status &= !VBLANK_MASK;
+    }
+
+    pub fn set_vblank(&mut self) {
+        self.vblank = true;
+        self.status |= VBLANK_MASK;
+    }
+
+    pub fn should_nmi(&self) -> bool {
+        self.vblank && self.nmi
     }
 }
