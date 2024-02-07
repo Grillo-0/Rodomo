@@ -33,9 +33,12 @@ impl Machine {
         let ppu = Rc::new(RefCell::new(Ppu::new(ppu_memory)));
 
         let mut asc = Asc::new();
-        asc.register_device_range(0xc000..=0xffff, memory);
-        asc.register_device_range(0x2000..0x2007, ppu.clone());
-        asc.register_device(0x4014, ppu.clone());
+        // TODO: Handle memory mirroring
+        // Based on https://www.nesdev.org/wiki/CPU_memory_map
+        asc.register_device_range(0x0000..=0x07ff, memory.clone()); // Internal RAM
+        asc.register_device_range(0x2000..=0x2007, ppu.clone()); // PPU registers
+        asc.register_device(0x4014, ppu.clone()); // OAM DMA
+        asc.register_device_range(0x4020..=0xffff, memory); // Cartridge space
 
         Machine {
             cpu: Cpu::new(),
@@ -64,22 +67,31 @@ impl Machine {
         loop {
             let start = time::Instant::now();
 
-            let cycles = self.cpu.cycles;
             'perframe: for scanline in 0..SCANLINES_PER_FRAME {
-                let mut should_nmi = false;
+                let cycles = self.cpu.cycles;
                 for tick in 0..PPU_CYCLES_PER_SCANLINE {
                     if tick % 3 == 0 {
                         self.cpu.read_instruction(&mut self.asc);
                     }
 
-                    if cycles.0.abs_diff(self.cpu.cycles.0)
-                        > (SCANLINES_PER_FRAME * PPU_CYCLES_PER_SCANLINE / 3) as usize
+                    if cycles.0.abs_diff(self.cpu.cycles.0) > (PPU_CYCLES_PER_SCANLINE / 3) as usize
                     {
-                        break 'perframe;
+                        break;
                     }
                 }
 
-                if scanline == 241 && should_nmi {
+                if scanline == 0 {
+                    println!("[INFO]: ending vblank");
+                    self.ppu.borrow_mut().reset_vblank();
+                }
+
+                if scanline == 241 {
+                    println!("[INFO]: starting vblank");
+                    self.ppu.borrow_mut().set_vblank();
+                }
+
+                if scanline == 241 && self.ppu.borrow().should_nmi() {
+                    println!("[INFO]: Sending NMI!!");
                     self.cpu.nmi(&mut self.asc);
                 }
             }
