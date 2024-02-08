@@ -67,7 +67,7 @@ impl Machine {
         loop {
             let start = time::Instant::now();
 
-            'perframe: for scanline in 0..SCANLINES_PER_FRAME {
+            for scanline in 0..SCANLINES_PER_FRAME {
                 let cycles = self.cpu.cycles;
                 for tick in 0..PPU_CYCLES_PER_SCANLINE {
                     if tick % 3 == 0 {
