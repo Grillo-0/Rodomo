@@ -81,17 +81,14 @@ impl Machine {
                 }
 
                 if scanline == 0 {
-                    println!("[INFO]: ending vblank");
                     self.ppu.borrow_mut().reset_vblank();
                 }
 
                 if scanline == 241 {
-                    println!("[INFO]: starting vblank");
                     self.ppu.borrow_mut().set_vblank();
                 }
 
                 if scanline == 241 && self.ppu.borrow().should_nmi() {
-                    println!("[INFO]: Sending NMI!!");
                     self.cpu.nmi(&mut self.asc);
                 }
             }
