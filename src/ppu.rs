@@ -48,8 +48,7 @@ pub struct Ppu {
     oam_addr: u8,
     oam_data: u8,
     scroll: u8,
-    addr: u8,
-    data: u8,
+    addr: u16,
     oam_dma: u8,
 
     nametable_base: u16,
@@ -66,6 +65,8 @@ pub struct Ppu {
 
     chars_texture: Option<glow::Texture>,
     char_program: Option<glow::Program>,
+
+    first_byte: bool,
 }
 
 impl MemoryMapped for Ppu {
@@ -106,8 +107,17 @@ impl MemoryMapped for Ppu {
             0x2003 => self.oam_addr = value,
             0x2004 => self.oam_data = value,
             0x2005 => self.scroll = value,
-            0x2006 => self.addr = value,
-            0x2007 => self.data = value,
+            0x2006 => {
+                if !self.first_byte {
+                    self.addr = (value as u16) << 8;
+                } else {
+                    self.addr |= value as u16;
+                }
+                self.first_byte = !self.first_byte;
+            }
+            0x2007 => {
+                self.memory.write(self.addr, value);
+            }
             0x4014 => self.oam_dma = value,
             _ => panic!("Address {addr:#x} is not registered by the PPU"),
         }
@@ -120,13 +130,17 @@ impl MemoryMapped for Ppu {
             0x2002 => {
                 let st = self.status;
                 self.status &= !VBLANK_MASK;
+                self.first_byte = false;
                 st
             }
             0x2003 => self.oam_addr,
             0x2004 => self.oam_data,
             0x2005 => self.scroll,
-            0x2006 => self.addr,
-            0x2007 => self.data,
+            0x2006 => self.addr as u8,
+            0x2007 => {
+                let value = self.memory.read(self.addr);
+                value
+            }
             0x4014 => self.oam_dma,
             _ => panic!("Address {addr:#x} is not registered by the PPU"),
         }
@@ -143,7 +157,6 @@ impl Ppu {
             oam_data: 0,
             scroll: 0,
             addr: 0,
-            data: 0,
             oam_dma: 0,
 
             nametable_base: 0,
@@ -159,6 +172,8 @@ impl Ppu {
             memory,
             chars_texture: None,
             char_program: None,
+
+            first_byte: false,
         }
     }
 
