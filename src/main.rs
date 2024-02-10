@@ -54,6 +54,7 @@ impl Machine {
 
         self.cpu.reset(&mut self.asc);
         self.ppu.borrow_mut().precal_chars(&gl);
+        self.ppu.borrow_mut().setup_pallet_tex(&gl);
         unsafe {
             gl.clear_color(0.1, 0.2, 0.3, 1.0);
         }
