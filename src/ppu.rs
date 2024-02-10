@@ -117,6 +117,10 @@ impl MemoryMapped for Ppu {
             }
             0x2007 => {
                 self.memory.write(self.addr, value);
+                self.addr += match self.vram_increment {
+                    VramIncrement::Across => 1,
+                    VramIncrement::Down => 32,
+                }
             }
             0x4014 => self.oam_dma = value,
             _ => panic!("Address {addr:#x} is not registered by the PPU"),
@@ -139,6 +143,10 @@ impl MemoryMapped for Ppu {
             0x2006 => self.addr as u8,
             0x2007 => {
                 let value = self.memory.read(self.addr);
+                self.addr += match self.vram_increment {
+                    VramIncrement::Across => 1,
+                    VramIncrement::Down => 32,
+                };
                 value
             }
             0x4014 => self.oam_dma,
