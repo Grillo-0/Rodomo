@@ -1533,6 +1533,10 @@ impl Cpu {
     pub fn nmi(&mut self, ram: &mut Asc) {
         let mut nmi_addr = ram.read(0xfffa) as u16;
         nmi_addr |= (ram.read(0xfffb) as u16) << 8;
+
+        self.push_long(self.pc, ram);
+        self.push(self.status_to_word(), ram);
+
         self.pc = nmi_addr;
     }
 
