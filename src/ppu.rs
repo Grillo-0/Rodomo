@@ -200,7 +200,6 @@ impl Ppu {
     }
 
     pub fn precal_chars(&mut self, gl: &glow::Context) {
-        let chars_texture;
         let char_program;
 
         let mut chars: Vec<u8> = vec![];
@@ -222,37 +221,17 @@ impl Ppu {
             })
             .collect();
 
+        let chars_texture = gfx::create_tex(
+            gl,
+            glow::TEXTURE_2D,
+            glow::RGB as i32,
+            CHAR_PIXEL_SIZE as i32,
+            (CHAR_PIXEL_SIZE * NUM_CHARS) as i32,
+            glow::BGR,
+            chars.as_slice(),
+        );
+
         unsafe {
-            chars_texture = gl.create_texture().unwrap();
-
-            gl.bind_texture(glow::TEXTURE_2D, Some(chars_texture));
-
-            gl.tex_image_2d(
-                glow::TEXTURE_2D,
-                0,
-                glow::RGB as i32,
-                CHAR_PIXEL_SIZE as i32,
-                (CHAR_PIXEL_SIZE * NUM_CHARS) as i32,
-                0,
-                glow::BGR,
-                glow::UNSIGNED_BYTE,
-                Some(chars.as_slice()),
-            );
-
-            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::REPEAT as i32);
-            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::REPEAT as i32);
-            gl.tex_parameter_i32(
-                glow::TEXTURE_2D,
-                glow::TEXTURE_MAG_FILTER,
-                glow::NEAREST as i32,
-            );
-            gl.tex_parameter_i32(
-                glow::TEXTURE_2D,
-                glow::TEXTURE_MIN_FILTER,
-                glow::NEAREST as i32,
-            );
-            gl.generate_mipmap(glow::TEXTURE_2D);
-
             let vert_shader = include_str!("../assets/char.vert");
             let frag_shader = include_str!("../assets/char.frag");
             char_program = gfx::create_program(gl, &vert_shader, &frag_shader);

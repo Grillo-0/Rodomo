@@ -76,3 +76,55 @@ pub unsafe fn create_program(
 
     return program;
 }
+
+pub fn create_tex(
+    gl: &glow::Context,
+    kind: u32,
+    internal_format: i32,
+    width: i32,
+    height: i32,
+    format: u32,
+    pixels: &[u8],
+) -> glow::Texture {
+    unsafe {
+        let tex = gl.create_texture().unwrap();
+
+        gl.bind_texture(kind, Some(tex));
+
+        match kind {
+            glow::TEXTURE_1D => {
+                gl.tex_image_1d(
+                    kind,
+                    0,
+                    internal_format,
+                    width,
+                    0,
+                    format,
+                    glow::UNSIGNED_BYTE,
+                    Some(pixels),
+                );
+            }
+            glow::TEXTURE_2D => {
+                gl.tex_image_2d(
+                    kind,
+                    0,
+                    internal_format,
+                    width,
+                    height,
+                    0,
+                    format,
+                    glow::UNSIGNED_BYTE,
+                    Some(pixels),
+                );
+            }
+            _ => panic!("Unsupported texture kind!"),
+        }
+
+        gl.tex_parameter_i32(kind, glow::TEXTURE_WRAP_S, glow::REPEAT as i32);
+        gl.tex_parameter_i32(kind, glow::TEXTURE_WRAP_T, glow::REPEAT as i32);
+        gl.tex_parameter_i32(kind, glow::TEXTURE_MAG_FILTER, glow::NEAREST as i32);
+        gl.tex_parameter_i32(kind, glow::TEXTURE_MIN_FILTER, glow::NEAREST as i32);
+        gl.generate_mipmap(kind);
+        return tex;
+    }
+}
