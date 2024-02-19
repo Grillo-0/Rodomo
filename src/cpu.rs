@@ -227,7 +227,7 @@ impl_instr!(
             ZeroPage => 3,
             ZeroPageY => 4,
             Absolute => 4,
-            AbsoluteX => 4,
+            AbsoluteY => 4,
             _ => unimplemented!(),
         }
     }
