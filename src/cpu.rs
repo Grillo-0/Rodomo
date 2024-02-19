@@ -227,7 +227,7 @@ impl_instr!(
             ZeroPage => 3,
             ZeroPageY => 4,
             Absolute => 4,
-            AbsoluteX => 4,
+            AbsoluteY => 4,
             _ => unimplemented!(),
         }
     }
@@ -1533,6 +1533,10 @@ impl Cpu {
     pub fn nmi(&mut self, ram: &mut Asc) {
         let mut nmi_addr = ram.read(0xfffa) as u16;
         nmi_addr |= (ram.read(0xfffb) as u16) << 8;
+
+        self.push_long(self.pc, ram);
+        self.push(self.status_to_word(), ram);
+
         self.pc = nmi_addr;
     }
 
@@ -1826,7 +1830,11 @@ impl Cpu {
             0xC3 => Dcp::run_with(AddressingMode::IndirectIndexed, self, mem),
             0xD3 => Dcp::run_with(AddressingMode::IndexedIndirect, self, mem),
 
-            _ => unimplemented!("{:#04X} opcode not implemented yet!\n", opcode),
+            _ => unimplemented!(
+                "Reached an unknown instruction with opcode {:#X} at address {:#X}\n",
+                opcode,
+                self.pc
+            ),
         };
 
         self.cycles += Wrapping(instr.cycles as usize);

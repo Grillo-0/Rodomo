@@ -54,6 +54,7 @@ impl Machine {
 
         self.cpu.reset(&mut self.asc);
         self.ppu.borrow_mut().precal_chars(&gl);
+        self.ppu.borrow_mut().setup_pallet_tex(&gl);
         unsafe {
             gl.clear_color(0.1, 0.2, 0.3, 1.0);
         }
@@ -67,7 +68,7 @@ impl Machine {
         loop {
             let start = time::Instant::now();
 
-            'perframe: for scanline in 0..SCANLINES_PER_FRAME {
+            for scanline in 0..SCANLINES_PER_FRAME {
                 let cycles = self.cpu.cycles;
                 for tick in 0..PPU_CYCLES_PER_SCANLINE {
                     if tick % 3 == 0 {
@@ -81,17 +82,14 @@ impl Machine {
                 }
 
                 if scanline == 0 {
-                    println!("[INFO]: ending vblank");
                     self.ppu.borrow_mut().reset_vblank();
                 }
 
                 if scanline == 241 {
-                    println!("[INFO]: starting vblank");
                     self.ppu.borrow_mut().set_vblank();
                 }
 
                 if scanline == 241 && self.ppu.borrow().should_nmi() {
-                    println!("[INFO]: Sending NMI!!");
                     self.cpu.nmi(&mut self.asc);
                 }
             }

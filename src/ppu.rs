@@ -16,8 +16,22 @@ const VBLANK_MASK: u8 = 1 << 7;
 const NUM_CHARS: u32 = 512;
 const CHAR_PIXEL_SIZE: u32 = 8;
 
-const CHARS_WIDTH: u32 = 16;
-const CHARS_HEIGHT: u32 = 32;
+const CHARS_WIDTH: u32 = 32;
+const CHARS_HEIGHT: u32 = 30;
+
+const ATRTABLE_SIZE: usize = 8;
+
+#[rustfmt::skip]
+const DEFAULT_SYSTEM_PALLETE: [u32; 64] = [
+    0x626262, 0x002391, 0x1810A6, 0x440099, 0x660071, 0x6D002C, 0x680A00, 0x4D2400,
+    0x2D3F00, 0x034B00, 0x005100, 0x004B1B, 0x003F62, 0x000000, 0x000000, 0x000000,
+    0xABABAB, 0x1E55EA, 0x463BFF, 0x8220F6, 0xAD1CBD, 0xBA2061, 0xB33215, 0x8D5600,
+    0x617900, 0x298B00, 0x079300, 0x008B4A, 0x0079A9, 0x000000, 0x000000, 0x000000,
+    0xFFFFFF, 0x6CA6FF, 0x968BFF, 0xD46FFF, 0xFF6BFF, 0xFF6FB2, 0xFF8263, 0xE0A70C,
+    0xB2CB00, 0x78DE00, 0x55E632, 0x3EDE9A, 0x4ECBFD, 0x4E4E4E, 0x000000, 0x000000,
+    0xFFFFFF, 0xC4DBFF, 0xD5D0FF, 0xEEC5FF, 0xFFC6FF, 0xFFC5E0, 0xFFCDC0, 0xF3DC9D,
+    0xE3ED96, 0xC9F299, 0xBBF5AD, 0xB2F2D7, 0xBBEDFF, 0xB8B8B8, 0x000000, 0x000000,
+];
 
 #[derive(Debug, Default)]
 enum VramIncrement {
@@ -48,8 +62,7 @@ pub struct Ppu {
     oam_addr: u8,
     oam_data: u8,
     scroll: u8,
-    addr: u8,
-    data: u8,
+    addr: u16,
     oam_dma: u8,
 
     nametable_base: u16,
@@ -66,6 +79,10 @@ pub struct Ppu {
 
     chars_texture: Option<glow::Texture>,
     char_program: Option<glow::Program>,
+
+    first_byte: bool,
+
+    system_pallete_texture: Option<glow::Texture>,
 }
 
 impl MemoryMapped for Ppu {
@@ -87,7 +104,7 @@ impl MemoryMapped for Ppu {
                 self.background_table_addr = if self.control & BACKGROUND_MASK == 0 {
                     0
                 } else {
-                    0x1000
+                    0x100
                 };
                 self.sprite_size = if self.control & SPRITE_SIZE_MASK == 0 {
                     SpriteSize::Size8x8
@@ -106,8 +123,21 @@ impl MemoryMapped for Ppu {
             0x2003 => self.oam_addr = value,
             0x2004 => self.oam_data = value,
             0x2005 => self.scroll = value,
-            0x2006 => self.addr = value,
-            0x2007 => self.data = value,
+            0x2006 => {
+                if !self.first_byte {
+                    self.addr = (value as u16) << 8;
+                } else {
+                    self.addr |= value as u16;
+                }
+                self.first_byte = !self.first_byte;
+            }
+            0x2007 => {
+                self.memory.write(self.addr, value);
+                self.addr += match self.vram_increment {
+                    VramIncrement::Across => 1,
+                    VramIncrement::Down => 32,
+                }
+            }
             0x4014 => self.oam_dma = value,
             _ => panic!("Address {addr:#x} is not registered by the PPU"),
         }
@@ -120,13 +150,21 @@ impl MemoryMapped for Ppu {
             0x2002 => {
                 let st = self.status;
                 self.status &= !VBLANK_MASK;
+                self.first_byte = false;
                 st
             }
             0x2003 => self.oam_addr,
             0x2004 => self.oam_data,
             0x2005 => self.scroll,
-            0x2006 => self.addr,
-            0x2007 => self.data,
+            0x2006 => self.addr as u8,
+            0x2007 => {
+                let value = self.memory.read(self.addr);
+                self.addr += match self.vram_increment {
+                    VramIncrement::Across => 1,
+                    VramIncrement::Down => 32,
+                };
+                value
+            }
             0x4014 => self.oam_dma,
             _ => panic!("Address {addr:#x} is not registered by the PPU"),
         }
@@ -143,7 +181,6 @@ impl Ppu {
             oam_data: 0,
             scroll: 0,
             addr: 0,
-            data: 0,
             oam_dma: 0,
 
             nametable_base: 0,
@@ -159,6 +196,10 @@ impl Ppu {
             memory,
             chars_texture: None,
             char_program: None,
+
+            first_byte: false,
+
+            system_pallete_texture: None,
         }
     }
 
@@ -177,7 +218,6 @@ impl Ppu {
     }
 
     pub fn precal_chars(&mut self, gl: &glow::Context) {
-        let chars_texture;
         let char_program;
 
         let mut chars: Vec<u8> = vec![];
@@ -191,45 +231,17 @@ impl Ppu {
             chars.append(&mut char);
         }
 
-        chars = chars
-            .into_iter()
-            .flat_map(|i| {
-                let pallete: [u32; 4] = [0x101010, 0xdda15e, 0x936639, 0xefefef];
-                pallete[i as usize].to_le_bytes()[0..3].to_vec()
-            })
-            .collect();
+        let chars_texture = gfx::create_tex(
+            gl,
+            glow::TEXTURE_2D,
+            glow::R8 as i32,
+            CHAR_PIXEL_SIZE as i32,
+            (CHAR_PIXEL_SIZE * NUM_CHARS) as i32,
+            glow::RED,
+            chars.as_slice(),
+        );
 
         unsafe {
-            chars_texture = gl.create_texture().unwrap();
-
-            gl.bind_texture(glow::TEXTURE_2D, Some(chars_texture));
-
-            gl.tex_image_2d(
-                glow::TEXTURE_2D,
-                0,
-                glow::RGB as i32,
-                CHAR_PIXEL_SIZE as i32,
-                (CHAR_PIXEL_SIZE * NUM_CHARS) as i32,
-                0,
-                glow::BGR,
-                glow::UNSIGNED_BYTE,
-                Some(chars.as_slice()),
-            );
-
-            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::REPEAT as i32);
-            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::REPEAT as i32);
-            gl.tex_parameter_i32(
-                glow::TEXTURE_2D,
-                glow::TEXTURE_MAG_FILTER,
-                glow::NEAREST as i32,
-            );
-            gl.tex_parameter_i32(
-                glow::TEXTURE_2D,
-                glow::TEXTURE_MIN_FILTER,
-                glow::NEAREST as i32,
-            );
-            gl.generate_mipmap(glow::TEXTURE_2D);
-
             let vert_shader = include_str!("../assets/char.vert");
             let frag_shader = include_str!("../assets/char.frag");
             char_program = gfx::create_program(gl, &vert_shader, &frag_shader);
@@ -238,7 +250,33 @@ impl Ppu {
         (self.chars_texture, self.char_program) = (Some(chars_texture), Some(char_program));
     }
 
-    unsafe fn draw_char(&self, gl: &glow::Context, index: usize, x: usize, y: usize) {
+    pub fn setup_pallet_tex(&mut self, gl: &glow::Context) {
+        self.system_pallete_texture = Some(gfx::create_tex(
+            gl,
+            glow::TEXTURE_1D,
+            glow::RGB as i32,
+            64,
+            0,
+            glow::BGR,
+            &DEFAULT_SYSTEM_PALLETE
+                .iter()
+                .flat_map(|v: &u32| {
+                    let v: [u8; 4] = v.to_le_bytes();
+                    v[0..3].to_vec()
+                })
+                .collect::<Vec<u8>>(),
+        ));
+    }
+
+    unsafe fn draw_char(
+        &self,
+        gl: &glow::Context,
+        index: usize,
+        x: usize,
+        y: usize,
+        palletes_tex: glow::Texture,
+        atrtable_tex: glow::Texture,
+    ) {
         let mut quad: Vec<f32> = vec![
             1.0f32, 1.0f32, 1.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 1.0f32,
         ];
@@ -331,10 +369,31 @@ impl Ppu {
 
         gl.active_texture(glow::TEXTURE0);
         gl.bind_texture(glow::TEXTURE_2D, self.chars_texture);
-        let sampler = gl
-            .get_uniform_location(self.char_program.unwrap(), "sampler")
+        let mut sampler = gl
+            .get_uniform_location(self.char_program.unwrap(), "chars_sampler")
             .unwrap();
         gl.uniform_1_i32(Some(&sampler), 0);
+
+        gl.active_texture(glow::TEXTURE1);
+        gl.bind_texture(glow::TEXTURE_1D, self.system_pallete_texture);
+        sampler = gl
+            .get_uniform_location(self.char_program.unwrap(), "syspallete_sampler")
+            .unwrap();
+        gl.uniform_1_i32(Some(&sampler), 1);
+
+        gl.active_texture(glow::TEXTURE2);
+        gl.bind_texture(glow::TEXTURE_1D, Some(palletes_tex));
+        sampler = gl
+            .get_uniform_location(self.char_program.unwrap(), "palletes_sampler")
+            .unwrap();
+        gl.uniform_1_i32(Some(&sampler), 2);
+
+        gl.active_texture(glow::TEXTURE3);
+        gl.bind_texture(glow::TEXTURE_2D, Some(atrtable_tex));
+        let sampler = gl
+            .get_uniform_location(self.char_program.unwrap(), "atrtable_sampler")
+            .unwrap();
+        gl.uniform_1_i32(Some(&sampler), 3);
 
         gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
         gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, &elements, glow::STATIC_DRAW);
@@ -345,13 +404,86 @@ impl Ppu {
         gl.delete_buffer(ebo);
     }
 
-    pub fn draw(&self, gl: &glow::Context) {
+    pub fn draw(&mut self, gl: &glow::Context) {
+        let mut pallets = vec![];
+        for i in 0x3f00..=0x3f0f {
+            pallets.push(self.memory.read(i));
+        }
+
+        let pallets_tex = gfx::create_tex(
+            gl,
+            glow::TEXTURE_1D,
+            glow::R8 as i32,
+            16,
+            0,
+            glow::RED,
+            pallets.as_slice(),
+        );
+
+        let atrtable_offset = CHARS_WIDTH * CHARS_HEIGHT;
+        let atrtable_addr = self.nametable_base + atrtable_offset as u16;
+
+        let mut attribute_table = vec![];
+
+        for i in 0..(ATRTABLE_SIZE * ATRTABLE_SIZE) as u16 {
+            attribute_table.push(self.memory.read(atrtable_addr + i));
+        }
+
+        let mut buf = vec![0; (ATRTABLE_SIZE * ATRTABLE_SIZE * 4) as usize];
+
+        for (i, v) in attribute_table.into_iter().enumerate() {
+            let top_left = (v >> (0 * 2)) & 0x3;
+            let top_right = (v >> (1 * 2)) & 0x3;
+            let bottom_left = (v >> (2 * 2)) & 0x3;
+            let bottom_right = (v >> (3 * 2)) & 0x3;
+
+            let mut x = i % ATRTABLE_SIZE;
+            let mut y = i / ATRTABLE_SIZE;
+            x *= 2;
+            y *= 2;
+            let mut pos = x + y * (CHARS_WIDTH / 2) as usize;
+            buf[pos] = top_left;
+
+            x += 1;
+            pos = x + y * (CHARS_WIDTH / 2) as usize;
+            buf[pos] = top_right;
+
+            y += 1;
+            pos = x + y * (CHARS_WIDTH / 2) as usize;
+            buf[pos] = bottom_right;
+
+            x -= 1;
+            pos = x + y * (CHARS_WIDTH / 2) as usize;
+            buf[pos] = bottom_left;
+        }
+
+        buf.truncate((CHARS_WIDTH * CHARS_HEIGHT / 4) as usize);
+        let attribute_table = buf;
+
+        let atrtable_tex = gfx::create_tex(
+            gl,
+            glow::TEXTURE_2D,
+            glow::R8 as i32,
+            (CHARS_WIDTH / 2) as i32,
+            (CHARS_HEIGHT / 2) as i32,
+            glow::RED,
+            attribute_table.as_slice(),
+        );
+
         unsafe {
             gl.clear(glow::COLOR_BUFFER_BIT);
-            for y in 0..(CHARS_HEIGHT as usize) {
-                for x in 0..(CHARS_WIDTH as usize) {
-                    self.draw_char(gl, x + y * CHARS_WIDTH as usize, x, y);
-                }
+
+            for i in 0..CHARS_WIDTH * CHARS_HEIGHT {
+                let char = self.memory.read(i as u16 + self.nametable_base) as usize
+                    + self.background_table_addr as usize;
+                self.draw_char(
+                    gl,
+                    char,
+                    (i % CHARS_WIDTH) as usize,
+                    (i / CHARS_WIDTH) as usize,
+                    pallets_tex,
+                    atrtable_tex,
+                );
             }
         }
     }
