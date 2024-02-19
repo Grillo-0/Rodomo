@@ -1,4 +1,4 @@
-# NES-emulator
+# Rodomo
 
 > [!WARNING]
 > This software is unfinished. Keep your expectations low.
