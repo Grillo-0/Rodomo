@@ -1,13 +1,15 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::rc::Rc;
 
-pub trait MemoryMapped {
+pub trait MemoryMapped: Debug {
     fn write(&mut self, addr: u16, value: u8);
 
     fn read(&mut self, addr: u16) -> u8;
 }
 
+#[derive(Debug)]
 pub struct Asc {
     devices: HashMap<u16, Rc<RefCell<dyn MemoryMapped>>>,
     mirror_masks: HashMap<u16, u16>,

@@ -1,7 +1,10 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use glow::HasContext;
 
 use crate::asc::MemoryMapped;
-use crate::{gfx, Ram};
+use crate::{gfx, Asc, Ram};
 
 const NAMETABLE_MASK: u8 = 0b11;
 const VRAM_MASK: u8 = 1 << 2;
@@ -75,7 +78,7 @@ pub struct Ppu {
 
     vblank: bool,
 
-    memory: Ram,
+    memory: Asc,
 
     chars_texture: Option<glow::Texture>,
     char_program: Option<glow::Program>,
@@ -172,7 +175,22 @@ impl MemoryMapped for Ppu {
 }
 
 impl Ppu {
-    pub fn new(memory: Ram) -> Ppu {
+    pub fn new(pattern_tables: Ram) -> Ppu {
+        let mut memory = Asc::new();
+
+        let pattern_tables = Rc::new(RefCell::new(pattern_tables));
+        memory.register_device_range(0x0000..=0x1fff, pattern_tables, 0xffff);
+
+        let nametables = Rc::new(RefCell::new(Ram::new()));
+        memory.register_device_range(0x2000..=0x3eff, nametables, 0xfff);
+
+        let pallettes = Rc::new(RefCell::new(Ram::new()));
+        memory.register_device_range(0x3f00..=0x3fff, pallettes.clone(), 0x1f);
+        memory.register_device(0x3f10, pallettes.clone(), 0xf);
+        memory.register_device(0x3f14, pallettes.clone(), 0xf);
+        memory.register_device(0x3f18, pallettes.clone(), 0xf);
+        memory.register_device(0x3f1c, pallettes, 0xf);
+
         Ppu {
             control: 0,
             mask: 0,
