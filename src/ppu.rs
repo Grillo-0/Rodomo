@@ -88,7 +88,7 @@ pub struct Ppu {
 impl MemoryMapped for Ppu {
     fn write(&mut self, addr: u16, value: u8) {
         match addr {
-            0x2000 => {
+            0x0 => {
                 self.control = value;
                 self.nametable_base = 0x2000 + 0x0400 * (self.control & NAMETABLE_MASK) as u16;
                 self.vram_increment = if self.control & VRAM_MASK == 0 {
@@ -118,12 +118,12 @@ impl MemoryMapped for Ppu {
                 };
                 self.nmi = self.control & NMI_MASK != 0;
             }
-            0x2001 => self.mask = value,
-            0x2002 => (),
-            0x2003 => self.oam_addr = value,
-            0x2004 => self.oam_data = value,
-            0x2005 => self.scroll = value,
-            0x2006 => {
+            0x1 => self.mask = value,
+            0x2 => (),
+            0x3 => self.oam_addr = value,
+            0x4 => self.oam_data = value,
+            0x5 => self.scroll = value,
+            0x6 => {
                 if !self.first_byte {
                     self.addr = (value as u16) << 8;
                 } else {
@@ -131,7 +131,7 @@ impl MemoryMapped for Ppu {
                 }
                 self.first_byte = !self.first_byte;
             }
-            0x2007 => {
+            0x7 => {
                 self.memory.write(self.addr, value);
                 self.addr += match self.vram_increment {
                     VramIncrement::Across => 1,
@@ -145,19 +145,19 @@ impl MemoryMapped for Ppu {
 
     fn read(&mut self, addr: u16) -> u8 {
         match addr {
-            0x2000 => self.control,
-            0x2001 => self.mask,
-            0x2002 => {
+            0x0 => self.control,
+            0x1 => self.mask,
+            0x2 => {
                 let st = self.status;
                 self.status &= !VBLANK_MASK;
                 self.first_byte = false;
                 st
             }
-            0x2003 => self.oam_addr,
-            0x2004 => self.oam_data,
-            0x2005 => self.scroll,
-            0x2006 => self.addr as u8,
-            0x2007 => {
+            0x3 => self.oam_addr,
+            0x4 => self.oam_data,
+            0x5 => self.scroll,
+            0x6 => self.addr as u8,
+            0x7 => {
                 let value = self.memory.read(self.addr);
                 self.addr += match self.vram_increment {
                     VramIncrement::Across => 1,

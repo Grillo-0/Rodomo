@@ -29,16 +29,19 @@ struct Machine {
 
 impl Machine {
     fn new(memory: Ram, ppu_memory: Ram) -> Machine {
-        let memory = Rc::new(RefCell::new(memory));
         let ppu = Rc::new(RefCell::new(Ppu::new(ppu_memory)));
 
         let mut asc = Asc::new();
-        // TODO: Handle memory mirroring
         // Based on https://www.nesdev.org/wiki/CPU_memory_map
-        asc.register_device_range(0x0000..=0x07ff, memory.clone()); // Internal RAM
-        asc.register_device_range(0x2000..=0x2007, ppu.clone()); // PPU registers
-        asc.register_device(0x4014, ppu.clone()); // OAM DMA
-        asc.register_device_range(0x4020..=0xffff, memory); // Cartridge space
+        let internal_ram = Rc::new(RefCell::new(Ram::new()));
+        asc.register_device_range(0x0000..=0x1fff, internal_ram.clone(), 0x7ff);
+
+        asc.register_device_range(0x2000..=0x3fff, ppu.clone(), 0x7);
+
+        asc.register_device(0x4014, ppu.clone(), 0xffff); // OAM DMA
+
+        let memory = Rc::new(RefCell::new(memory));
+        asc.register_device_range(0x4020..=0xffff, memory, 0xffff); // Cartridge space
 
         Machine {
             cpu: Cpu::new(),
