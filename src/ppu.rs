@@ -425,7 +425,11 @@ impl Ppu {
     pub fn draw(&mut self, gl: &glow::Context) {
         let mut pallets = vec![];
         for i in 0x3f00..=0x3f0f {
-            pallets.push(self.memory.read(i));
+            if i % 4 == 0 {
+                pallets.push(self.memory.read(0x3f00));
+            } else {
+                pallets.push(self.memory.read(i));
+            }
         }
 
         let pallets_tex = gfx::create_tex(
